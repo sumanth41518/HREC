@@ -20,10 +20,12 @@ app.use(express.json());
 const mongoURI = process.env.MONGODB_URI || 'mongodb://localhost:27017/employeesDB';
 mongoose.connect(mongoURI, {
     useNewUrlParser: true,
-    useUnifiedTopology: true
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 30000, // Increase timeout to 30 seconds
+    heartbeatFrequencyMS: 10000 // Check connection health every 10 seconds
 })
 .then(() => console.log('Connected to MongoDB'))
-.catch(err => console.error('Error connecting to MongoDB:', err.message));
+.catch(err => console.error('Error connecting to MongoDB:', err.message, err.stack));
 
 // Define MongoDB schemas and models
 const employeeSchema = new mongoose.Schema({
