@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Function to fetch and update messages
     let lastMessageId = 0;
     function checkForNewMessages() {
-fetchData('http://localhost:3006/api/messages')
+        fetchData('/api/messages')
             .then(response => response.json())
             .then(messages => {
                 const newMessages = messages.filter(msg => msg.id > lastMessageId);
@@ -180,8 +180,8 @@ fetchData('http://localhost:3006/api/messages')
     // Function to fetch and display recent sent messages with employee details
     function fetchAndDisplayRecentMessages() {
         Promise.all([
-            fetchData('http://localhost:3006/api/sent-messages').then(response => response.json()),
-            fetchData('http://localhost:3006/api/employees').then(response => response.json())
+            fetchData('/api/sent-messages').then(response => response.json()),
+            fetchData('/api/employees').then(response => response.json())
         ])
         .then(([messages, employees]) => {
             const dashboardMessageList = document.getElementById('recentMessagesList');
@@ -406,7 +406,7 @@ fetchData('http://localhost:3006/api/messages')
     
     // Function to fetch and render employee list from backend
     function fetchAndRenderEmployeeList() {
-fetchData('http://localhost:3006/api/employees')
+        fetchData('/api/employees')
             .then(response => response.json())
             .then(employees => {
                 console.log('Fetched employees:', employees); // Debug log to check email data
@@ -459,7 +459,7 @@ fetchData('http://localhost:3006/api/employees')
                         const newPosition = prompt(`Enter new position for ${employee.name}:`, employee.position);
                         const newEmail = prompt(`Enter new email for ${employee.name}:`, employee.email || '');
                         if (newName && newPosition) {
-                            fetchData(`http://localhost:3006/api/employees/${employee.id}`, {
+                            fetchData(`/api/employees/${employee.id}`, {
                                 method: 'PUT',
                                 headers: {
                                     'Content-Type': 'application/json'
@@ -485,7 +485,7 @@ fetchData('http://localhost:3006/api/employees')
                     employeeItem.querySelector('.btn-delete').addEventListener('click', function() {
                         showConfirm(`Are you sure you want to delete ${employee.name}?`, 
                             function() {
-                                fetchData(`http://localhost:3006/api/employees/${employee.id}`, {
+                                fetchData(`/api/employees/${employee.id}`, {
                                     method: 'DELETE'
                                 })
                                 .then(response => {
@@ -572,7 +572,7 @@ fetchData('http://localhost:3006/api/employees')
 
         bulkSendBtn.addEventListener('click', function() {
             const selectedEmployees = [];
-            fetchData('http://localhost:3006/api/employees')
+            fetchData('/api/employees')
                 .then(response => response.json())
                 .then(employees => {
                     document.querySelectorAll('.employee-checkbox input:checked').forEach(checkbox => {
@@ -677,7 +677,7 @@ if (!employeeForm) {
             email: employeeEmail ? employeeEmail.value : ''
         };
         
-fetchData('http://localhost:3006/api/employees', {
+        fetchData('/api/employees', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -798,7 +798,7 @@ function sendMessageToEmployee(employee) {
                     // Show spinner on button
                     sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
                     sendBtn.disabled = true;
-                    fetchData('http://localhost:3006/api/send-email', {
+                    fetchData('/api/send-email', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -919,7 +919,7 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
             emailText = emailText.replace(/{{employeeEmail}}/g, emp.email || 'Not provided');
             emailText = emailText.replace(/{{employeePosition}}/g, emp.position);
 
-            fetchData('http://localhost:3006/api/send-email', {
+            fetchData('/api/send-email', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -974,7 +974,7 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
     const exportButton = document.getElementById('exportToExcel');
     if (exportButton) {
         exportButton.addEventListener('click', function() {
-            fetchData('http://localhost:3006/api/employees')
+            fetchData('/api/employees')
                 .then(response => response.json())
                 .then(employees => {
                     // Prepare data for Excel
@@ -1119,7 +1119,7 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
         const recipientSelect = document.getElementById('recipient');
         recipientSelect.innerHTML = '<option value="">Select Recipient</option>';
         recipientSelect.innerHTML += '<option value="all">All Employees</option>';
-        fetchData('http://localhost:3006/api/employees')
+        fetchData('/api/employees')
             .then(response => response.json())
             .then(employees => {
                 employees.forEach(employee => {
@@ -1163,7 +1163,7 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
         }
         
         // Fetch employee details to replace placeholders
-        fetchData(`http://localhost:3006/api/employees`)
+        fetchData(`/api/employees`)
             .then(response => response.json())
             .then(employees => {
                 if (recipientId === 'all') {
@@ -1185,7 +1185,7 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
                             scheduledTime: scheduledDateTime
                         };
                         
-                        fetchData('http://localhost:3006/api/schedule-message', {
+                        fetchData('/api/schedule-message', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json'
@@ -1244,7 +1244,7 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
                         scheduledTime: scheduledDateTime
                     };
                     
-                    fetchData('http://localhost:3006/api/schedule-message', {
+                    fetchData('/api/schedule-message', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'

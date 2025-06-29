@@ -8,7 +8,11 @@ const app = express();
 const port = 3006;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: '*', // Allow requests from any origin for mobile access
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Database setup - MongoDB
