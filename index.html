@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <div id="dashboardContent" style="display: none;">
+            <div class="header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h1>Dashboard</h1>
+                <div>
+                </div>
+            </div>
+            <!-- Stats Cards -->
+        <div class="stats-container">
+            <div class="stat-card">
+                <div class="stat-icon blue">
+                    <i class="far fa-comment"></i>
+                </div>
+                <div class="stat-content">
+                    <h2>1247</h2>
+                    <p>Total Messages</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="stat-content">
+                    <h2>1180</h2>
+                    <p>Delivered</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon orange">
+                    <i class="far fa-clock"></i>
+                </div>
+                <div class="stat-content">
+                    <h2>45</h2>
+                    <p>Pending</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon purple">
+                    <i class="far fa-comment-dots"></i>
+                </div>
+                <div class="stat-content">
+                    <h2>892</h2>
+                    <p>Responded</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon blue-light">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="stat-content">
+                    <h2>71.4%</h2>
+                    <p>Response Rate</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation -->
+        <div class="navigation">
+            <div class="nav-item active" data-tab="dashboard">
+                <i class="fas fa-chart-bar"></i>
+                <span>Dashboard</span>
+            </div>
+            <div class="nav-item" data-tab="templates">
+                <i class="far fa-file-alt"></i>
+                <span>Templates</span>
+            </div>
+            <div class="nav-item" data-tab="employees">
+                <i class="fas fa-users"></i>
+                <span>Employees</span>
+            </div>
+            <div class="nav-item" data-tab="messages">
+                <i class="far fa-comment"></i>
+                <span>Messages</span>
+            </div>
+            <div class="nav-item" data-tab="analytics">
+                <i class="fas fa-chart-line"></i>
+                <span>Analytics</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="content-container">
+            <!-- Dashboard Content -->
+            <div id="dashboard" class="tab-content active">
+                <!-- Recent Messages -->
+                <div class="content-box">
+                    <div class="content-header">
+                        <div class="header-icon">
+                            <i class="far fa-comment"></i>
+                        </div>
+                        <div class="header-text">
+                            <h2>Recent Messages</h2>
+                            <p>Latest message activity and status updates</p>
+                        </div>
+                    </div>
+                    <div class="message-list" id="recentMessagesList">
+                        <!-- Recent messages will be dynamically loaded here -->
+                        <p id="noMessagesPlaceholder">No recent messages available.</p>
+                    </div>
+                </div>
+
+                <!-- Urgent Actions -->
+                <div class="content-box">
+                    <div class="content-header">
+                        <div class="header-icon urgent">
+                            <i class="fas fa-exclamation-circle"></i>
+                        </div>
+                        <div class="header-text">
+                            <h2>Urgent Actions</h2>
+                            <p>Items requiring immediate attention</p>
+                        </div>
+                    </div>
+                    <div class="urgent-list">
+                        <div class="urgent-item">
+                            <div class="urgent-content">
+                                <h3>Alice Brown</h3>
+                                <p>Timesheet submission overdue by 2 days</p>
+                                <span class="priority-badge high">high</span>
+                            </div>
+                            <button class="btn-action">Take Action</button>
+                        </div>
+                        <div class="urgent-item">
+                            <div class="urgent-content">
+                                <h3>Tom Davis</h3>
+                                <p>Document verification pending</p>
+                                <span class="priority-badge medium">medium</span>
+                            </div>
+                            <button class="btn-action">Take Action</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Employees Content -->
+            <div id="employees" class="tab-content">
+                <div class="content-box">
+                    <div class="content-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center;">
+                            <div class="header-icon">
+                                <i class="fas fa-users"></i>
+                            </div>
+                            <div class="header-text">
+                                <h2>Employee List</h2>
+                                <p>View and manage employee information</p>
+                            </div>
+                        </div>
+                        <button id="exportToExcel" style="background-color: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Export to Excel</button>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <a href="employee-entry.html" class="btn-submit">Add New Employee</a>
+                    </div>
+                    <div class="employee-list" id="employeeList">
+                        <!-- Employee data will be dynamically loaded here -->
+                        <p id="noEmployeesPlaceholder">No employees available.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Templates Content -->
+            <div id="templates" class="tab-content">
+                <div class="content-box">
+                    <div class="content-header">
+                        <div class="header-icon">
+                            <i class="far fa-file-alt"></i>
+                        </div>
+                        <div class="header-text">
+                            <h2>Templates</h2>
+                            <p>Manage message templates</p>
+                        </div>
+                    </div>
+                    <div class="template-section">
+                        <div class="template-form">
+                            <h3>Create New Template</h3>
+                            <form id="templateForm">
+                                <div class="form-group">
+                                    <label for="templateName">Template Name:</label>
+                                    <input type="text" id="templateName" name="templateName" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="templateContent">Message Content:</label>
+                                    <textarea id="templateContent" name="templateContent" rows="4" required></textarea>
+                                </div>
+                                <button type="submit" class="btn-submit">Save Template</button>
+                            </form>
+                        </div>
+                        <div class="template-list">
+                            <h3>Saved Templates</h3>
+                            <div id="templateListContent">
+                                <p>No templates saved yet.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Messages Content -->
+            <div id="messages" class="tab-content">
+                <div class="content-box">
+                    <div class="content-header">
+                        <div class="header-icon">
+                            <i class="far fa-comment"></i>
+                        </div>
+                        <div class="header-text">
+                            <h2>Messages</h2>
+                            <p>View all messages</p>
+                        </div>
+                    </div>
+                    <div class="empty-content">
+                        <p>Messages content will be displayed here.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics Content -->
+            <div id="analytics" class="tab-content">
+                <div class="content-box">
+                    <div class="content-header">
+                        <div class="header-icon">
+                            <i class="fas fa-chart-line"></i>
+                        </div>
+                        <div class="header-text">
+                            <h2>Analytics</h2>
+                            <p>View performance metrics</p>
+                        </div>
+                    </div>
+                    <div class="empty-content">
+                        <p>Analytics content will be displayed here.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Employee Modal -->
+        <div id="addEmployeeModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Add New Employee</h2>
+                    <span class="close">&times;</span>
+                </div>
+                <form id="employeeForm">
+                    <div class="form-group">
+                        <label for="employeeName">Name:</label>
+                        <input type="text" id="employeeName" name="employeeName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="employeePosition">Position:</label>
+                        <input type="text" id="employeePosition" name="employeePosition" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="employeeId">Employee ID:</label>
+                        <input type="text" id="employeeId" name="employeeId" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="employeeEmail">Email:</label>
+                        <input type="email" id="employeeEmail" name="employeeEmail">
+                    </div>
+                    <button type="submit" class="btn-submit">Add Employee</button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Schedule Message Modal -->
+<div id="scheduleMessageModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Schedule Message</h2>
+            <span class="close">&times;</span>
+        </div>
+        <form id="scheduleMessageForm">
+            <div class="form-group">
+                <label for="recipient">Recipient:</label>
+                <select id="recipient" name="recipient" required>
+                    <option value="">Select Recipient</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="template">Template:</label>
+                <select id="template" name="template" required>
+                    <option value="">Select Template</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="scheduleDate">Schedule Date:</label>
+                <input type="date" id="scheduleDate" name="scheduleDate" required>
+            </div>
+            <div class="form-group">
+                <label for="scheduleTime">Schedule Time:</label>
+                <input type="time" id="scheduleTime" name="scheduleTime" required>
+            </div>
+            <button type="submit" class="btn-submit">Schedule Message</button>
+        </form>
+    </div>
+</div>
+        
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <div class="section-header">
+                <h2>Quick Actions</h2>
+                <p>Common tasks and shortcuts</p>
+            </div>
+            <div class="action-buttons">
+                <button class="action-btn send-message">
+                    <i class="far fa-comment"></i>
+                    <span>Send Message</span>
+                </button>
+                <button class="action-btn add-employee admin-only" style="display: inline-block;">
+                    <i class="fas fa-user-plus"></i>
+                    <span>Add Employee</span>
+                </button>
+                <button class="action-btn schedule-message">
+                    <i class="far fa-clock"></i>
+                    <span>Schedule Message</span>
+                </button>
+                <button class="action-btn view-reports">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>View Reports</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/script.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Show dashboard content by default since login is removed
+            document.getElementById('dashboardContent').style.display = 'block';
+        });
+    </script>
+</body>
+</html>
