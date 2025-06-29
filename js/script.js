@@ -414,6 +414,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Additional debug log to highlight email field specifically
                 employees.forEach(emp => console.log(`Employee ${emp.name} email: ${emp.email || 'Not provided'}`));
                 const employeeList = document.querySelector('.employee-list');
+                if (!employeeList) {
+                    console.error('Employee list element not found in the DOM.');
+                    showModal('Error: Employee list element not found. Please ensure the HTML structure is correct.');
+                    return;
+                }
                 employeeList.innerHTML = '';
                 
                 // Enable scrollbar if employee count exceeds 4
