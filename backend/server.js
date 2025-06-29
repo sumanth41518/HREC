@@ -68,9 +68,11 @@ const SentMessage = mongoose.model('SentMessage', sentMessageSchema);
 app.get('/api/employees', async (req, res) => {
     try {
         const employees = await Employee.find();
+        console.log('Fetched employee list:', employees.length, 'employees found');
         res.json(employees);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error fetching employee list:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to fetch employees', details: err.message });
     }
 });
 
