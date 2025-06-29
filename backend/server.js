@@ -74,13 +74,22 @@ app.get('/api/employees', async (req, res) => {
 
 app.post('/api/employees', async (req, res) => {
     const { id, name, position, email } = req.body;
-    console.log('Adding new employee with email:', email);
+    console.log('Adding new employee with ID:', id, 'Name:', name, 'Position:', position, 'Email:', email);
+    if (!id || !name || !position) {
+        return res.status(400).json({ error: 'Missing required fields: id, name, and position are required' });
+    }
     try {
+        const existingEmployee = await Employee.findOne({ id });
+        if (existingEmployee) {
+            return res.status(409).json({ error: 'Employee with this ID already exists' });
+        }
         const newEmployee = new Employee({ id, name, position, email });
         await newEmployee.save();
-        res.json({ id, name, position, email });
+        console.log('Successfully added employee with ID:', id);
+        res.status(201).json({ id, name, position, email });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Error adding employee:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to add employee', details: err.message });
     }
 });
 
