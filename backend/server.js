@@ -61,6 +61,13 @@ const sentMessageSchema = new mongoose.Schema({
 });
 const SentMessage = mongoose.model('SentMessage', sentMessageSchema);
 
+const templateSchema = new mongoose.Schema({
+    name: { type: String, required: true, unique: true },
+    content: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+});
+const Template = mongoose.model('Template', templateSchema);
+
  // API Endpoints
 
 
@@ -240,6 +247,78 @@ app.get('/api/scheduled-messages', async (req, res) => {
         res.json(formattedMessages);
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+// Get all templates
+app.get('/api/templates', async (req, res) => {
+    try {
+        const templates = await Template.find().sort({ createdAt: -1 });
+        res.json(templates);
+    } catch (err) {
+        console.error('Error fetching templates:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to fetch templates', details: err.message });
+    }
+});
+
+// Add a new template
+app.post('/api/templates', async (req, res) => {
+    const { name, content } = req.body;
+    console.log('Adding new template with name:', name);
+    if (!name || !content) {
+        return res.status(400).json({ error: 'Missing required fields: name and content are required' });
+    }
+    try {
+        const existingTemplate = await Template.findOne({ name });
+        if (existingTemplate) {
+            return res.status(409).json({ error: 'Template with this name already exists' });
+        }
+        const newTemplate = new Template({ name, content });
+        await newTemplate.save();
+        console.log('Successfully added template with name:', name);
+        res.status(201).json({ id: newTemplate._id, name, content, createdAt: newTemplate.createdAt });
+    } catch (err) {
+        console.error('Error adding template:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to add template', details: err.message });
+    }
+});
+
+// Update a template
+app.put('/api/templates/:id', async (req, res) => {
+    const { name, content } = req.body;
+    const id = req.params.id;
+    console.log('Updating template ID:', id);
+    try {
+        const updatedTemplate = await Template.findByIdAndUpdate(
+            id,
+            { name, content },
+            { new: true }
+        );
+        if (!updatedTemplate) {
+            res.status(404).json({ error: 'Template not found' });
+            return;
+        }
+        res.json(updatedTemplate);
+    } catch (err) {
+        console.error('Error updating template:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to update template', details: err.message });
+    }
+});
+
+// Delete a template
+app.delete('/api/templates/:id', async (req, res) => {
+    const id = req.params.id;
+    console.log('Deleting template ID:', id);
+    try {
+        const deletedTemplate = await Template.findByIdAndDelete(id);
+        if (!deletedTemplate) {
+            res.status(404).json({ error: 'Template not found' });
+            return;
+        }
+        res.json({ message: 'Template deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting template:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to delete template', details: err.message });
     }
 });
 

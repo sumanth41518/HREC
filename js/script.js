@@ -715,12 +715,6 @@ function sendMessageToEmployee(employee) {
         return;
     }
 
-    const templates = JSON.parse(localStorage.getItem('templates') || '[]');
-    if (templates.length === 0) {
-        showModal('No templates available. Please create a template first.');
-        return;
-    }
-
     const modal = document.createElement('div');
     modal.className = 'modal';
     modal.style.display = 'block';
@@ -731,19 +725,136 @@ function sendMessageToEmployee(employee) {
                 <span class="close">&times;</span>
             </div>
             <div class="template-selection">
-                ${templates.map(template => `
-                    <div class="template-option" data-name="${template.name}">
-                        <h4>${template.name}</h4>
-                        <p>${template.content}</p>
-                    </div>
-                `).join('')}
+                <p>Loading templates...</p>
             </div>
         </div>
     `;
     document.body.appendChild(modal);
 
-    const closeBtn = modal.querySelector('.close');
-    closeBtn.addEventListener('click', function() {
+    fetchData('/api/templates')
+        .then(response => response.json())
+        .then(templates => {
+            if (templates.length === 0) {
+                showModal('No templates available. Please create a template first.');
+                modal.remove();
+                return;
+            }
+
+            const templateSelection = modal.querySelector('.template-selection');
+            templateSelection.innerHTML = '';
+            templates.forEach(template => {
+                const templateOption = document.createElement('div');
+                templateOption.className = 'template-option';
+                templateOption.setAttribute('data-name', template.name);
+                templateOption.innerHTML = `
+                    <h4>${template.name}</h4>
+                    <p>${template.content}</p>
+                `;
+                templateSelection.appendChild(templateOption);
+
+                templateOption.addEventListener('click', function() {
+                    const selectedTemplate = templates.find(t => t.name === template.name);
+                    if (selectedTemplate) {
+                        // Create a preview of the email with placeholders replaced
+                        let previewText = selectedTemplate.content;
+                        previewText = previewText.replace(/{{employeeName}}/g, employee.name);
+                        previewText = previewText.replace(/{{employeeId}}/g, employee.id);
+                        previewText = previewText.replace(/{{employeeEmail}}/g, employee.email || 'Not provided');
+                        previewText = previewText.replace(/{{employeePosition}}/g, employee.position);
+                        
+                        const previewModal = document.createElement('div');
+                        previewModal.className = 'modal';
+                        previewModal.style.display = 'block';
+                        previewModal.innerHTML = `
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h2>Email Preview for ${employee.name}</h2>
+                                    <span class="close-preview">&times;</span>
+                                </div>
+                                <div class="email-preview">
+                                    <h4>Subject: ${selectedTemplate.name}</h4>
+                                    <p>${previewText}</p>
+                                </div>
+                                <div class="preview-actions">
+                                    <button class="btn-send">Send Email</button>
+                                    <button class="btn-cancel">Cancel</button>
+                                </div>
+                            </div>
+                        `;
+                        document.body.appendChild(previewModal);
+                        
+                        const closePreviewBtn = previewModal.querySelector('.close-preview');
+                        closePreviewBtn.addEventListener('click', function() {
+                            previewModal.remove();
+                        });
+                        
+                        window.addEventListener('click', function(event) {
+                            if (event.target === previewModal) {
+                                previewModal.remove();
+                            }
+                        });
+                        
+                        const sendBtn = previewModal.querySelector('.btn-send');
+                        sendBtn.addEventListener('click', function() {
+                            // Show spinner on button
+                            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+                            sendBtn.disabled = true;
+                            fetchData('/api/send-email', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    to: employee.email,
+                                    subject: selectedTemplate.name,
+                                    text: previewText // Send the processed text with placeholders already replaced
+                                })
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                sendBtn.innerHTML = 'Send Email';
+                                sendBtn.disabled = false;
+                                if (data.error) {
+                                    showModal(`Failed to send email to ${employee.name}: ${data.details}`);
+                                } else {
+                                    showModal(`Email sent successfully to ${employee.name} at ${employee.email} with template: ${selectedTemplate.name}`);
+                                    // Update delivery status in local storage
+                                    const messageId = data.id || `${employee.email}-${new Date().toISOString()}`; // Use server-provided ID if available
+                                    const deliveryStatuses = JSON.parse(localStorage.getItem('deliveryStatuses') || '{}');
+                                    deliveryStatuses[messageId] = 'delivered';
+                                    localStorage.setItem('deliveryStatuses', JSON.stringify(deliveryStatuses));
+                                    // Refresh the dashboard to show updated status
+                                    fetchAndDisplayRecentMessages();
+                                }
+                                previewModal.remove();
+                                modal.remove();
+                            })
+                            .catch(error => {
+                                sendBtn.innerHTML = 'Send Email';
+                                sendBtn.disabled = false;
+                                console.error('Error sending email:', error);
+                                showModal(`Error sending email to ${employee.name}: ${error.message}`);
+                                previewModal.remove();
+                                modal.remove();
+                            });
+                        });
+                        
+                        const cancelBtn = previewModal.querySelector('.btn-cancel');
+                        cancelBtn.addEventListener('click', function() {
+                            previewModal.remove();
+                        });
+                    }
+                });
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching templates for selection:', error);
+            showModal('Failed to load templates. Please try again.');
+            modal.remove();
+        });
+
+    const modalCloseBtn = modal.querySelector('.close');
+    modalCloseBtn.addEventListener('click', function() {
         modal.remove();
     });
 
@@ -751,104 +862,6 @@ function sendMessageToEmployee(employee) {
         if (event.target === modal) {
             modal.remove();
         }
-    });
-
-    const templateOptions = modal.querySelectorAll('.template-option');
-    templateOptions.forEach(option => {
-        option.addEventListener('click', function() {
-            const templateName = this.getAttribute('data-name');
-            const selectedTemplate = templates.find(t => t.name === templateName);
-            if (selectedTemplate) {
-                // Create a preview of the email with placeholders replaced
-                let previewText = selectedTemplate.content;
-                previewText = previewText.replace(/{{employeeName}}/g, employee.name);
-                previewText = previewText.replace(/{{employeeId}}/g, employee.id);
-                previewText = previewText.replace(/{{employeeEmail}}/g, employee.email || 'Not provided');
-                previewText = previewText.replace(/{{employeePosition}}/g, employee.position);
-                
-                const previewModal = document.createElement('div');
-                previewModal.className = 'modal';
-                previewModal.style.display = 'block';
-                previewModal.innerHTML = `
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h2>Email Preview for ${employee.name}</h2>
-                            <span class="close-preview">&times;</span>
-                        </div>
-                        <div class="email-preview">
-                            <h4>Subject: ${selectedTemplate.name}</h4>
-                            <p>${previewText}</p>
-                        </div>
-                        <div class="preview-actions">
-                            <button class="btn-send">Send Email</button>
-                            <button class="btn-cancel">Cancel</button>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(previewModal);
-                
-                const closePreviewBtn = previewModal.querySelector('.close-preview');
-                closePreviewBtn.addEventListener('click', function() {
-                    previewModal.remove();
-                });
-                
-                window.addEventListener('click', function(event) {
-                    if (event.target === previewModal) {
-                        previewModal.remove();
-                    }
-                });
-                
-                const sendBtn = previewModal.querySelector('.btn-send');
-                sendBtn.addEventListener('click', function() {
-                    // Show spinner on button
-                    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
-                    sendBtn.disabled = true;
-                    fetchData('/api/send-email', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            to: employee.email,
-                            subject: selectedTemplate.name,
-                            text: previewText // Send the processed text with placeholders already replaced
-                        })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        sendBtn.innerHTML = 'Send Email';
-                        sendBtn.disabled = false;
-                        if (data.error) {
-                            showModal(`Failed to send email to ${employee.name}: ${data.details}`);
-                        } else {
-                            showModal(`Email sent successfully to ${employee.name} at ${employee.email} with template: ${selectedTemplate.name}`);
-                            // Update delivery status in local storage
-                            const messageId = data.id || `${employee.email}-${new Date().toISOString()}`; // Use server-provided ID if available
-                            const deliveryStatuses = JSON.parse(localStorage.getItem('deliveryStatuses') || '{}');
-                            deliveryStatuses[messageId] = 'delivered';
-                            localStorage.setItem('deliveryStatuses', JSON.stringify(deliveryStatuses));
-                            // Refresh the dashboard to show updated status
-                            fetchAndDisplayRecentMessages();
-                        }
-                        previewModal.remove();
-                        modal.remove();
-                    })
-                    .catch(error => {
-                        sendBtn.innerHTML = 'Send Email';
-                        sendBtn.disabled = false;
-                        console.error('Error sending email:', error);
-                        showModal(`Error sending email to ${employee.name}: ${error.message}`);
-                        previewModal.remove();
-                        modal.remove();
-                    });
-                });
-                
-                const cancelBtn = previewModal.querySelector('.btn-cancel');
-                cancelBtn.addEventListener('click', function() {
-                    previewModal.remove();
-                });
-            }
-        });
     });
 }
 
@@ -1011,74 +1024,130 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
         });
     }
 
-    // Template data storage with persistence using localStorage
-    let templates = [];
-    const storedTemplates = localStorage.getItem('templates');
-    if (storedTemplates) {
-        templates = JSON.parse(storedTemplates);
-    }
-    
-    // Function to render template list
-    function renderTemplateList() {
-        const templateListContent = document.getElementById('templateListContent');
-        templateListContent.innerHTML = '';
-        
-        if (templates.length === 0) {
-            templateListContent.innerHTML = '<p>No templates saved yet.</p>';
-            return;
-        }
-        
-        templates.forEach(template => {
-            const templateItem = document.createElement('div');
-            templateItem.className = 'template-item';
-            templateItem.innerHTML = `
-                <h4>${template.name}</h4>
-                <p>${template.content}</p>
-                <div class="template-actions">
-                    <button class="btn-edit-template" title="Edit"><i class="fas fa-edit"></i></button>
-                    <button class="btn-delete-template" title="Delete"><i class="fas fa-trash-alt"></i></button>
-                </div>
-            `;
-            templateListContent.appendChild(templateItem);
-            
-            // Add event listeners to the buttons
-            templateItem.querySelector('.btn-edit-template').addEventListener('click', function() {
-                showModal(`Editing template: ${template.name}`);
-                // Functionality for editing can be implemented here
-            });
-            templateItem.querySelector('.btn-delete-template').addEventListener('click', function() {
-                showConfirm(`Are you sure you want to delete the template: ${template.name}?`, 
-                    function() {
-                        const index = templates.findIndex(tmpl => tmpl.name === template.name);
-                        if (index !== -1) {
-                            templates.splice(index, 1);
-                            localStorage.setItem('templates', JSON.stringify(templates));
-                            renderTemplateList();
+    // Function to fetch and render template list from backend
+    function fetchAndRenderTemplateList() {
+        fetchData('/api/templates')
+            .then(response => response.json())
+            .then(templates => {
+                const templateListContent = document.getElementById('templateListContent');
+                templateListContent.innerHTML = '';
+                
+                if (templates.length === 0) {
+                    templateListContent.innerHTML = '<p>No templates saved yet.</p>';
+                    return;
+                }
+                
+                templates.forEach(template => {
+                    const templateItem = document.createElement('div');
+                    templateItem.className = 'template-item';
+                    templateItem.setAttribute('data-id', template._id);
+                    templateItem.innerHTML = `
+                        <h4>${template.name}</h4>
+                        <p>${template.content}</p>
+                        <div class="template-actions">
+                            <button class="btn-edit-template" title="Edit"><i class="fas fa-edit"></i></button>
+                            <button class="btn-delete-template" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                        </div>
+                    `;
+                    templateListContent.appendChild(templateItem);
+                    
+                    // Add event listeners to the buttons
+                    templateItem.querySelector('.btn-edit-template').addEventListener('click', function() {
+                        const newName = prompt(`Enter new name for ${template.name}:`, template.name);
+                        const newContent = prompt(`Enter new content for ${template.name}:`, template.content);
+                        if (newName && newContent) {
+                            fetchData(`/api/templates/${template._id}`, {
+                                method: 'PUT',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ name: newName, content: newContent })
+                            })
+                            .then(response => {
+                                if (!response.ok) {
+                                    throw new Error(`HTTP error! Status: ${response.status}`);
+                                }
+                                return response.json();
+                            })
+                            .then(data => {
+                                showModal(`Updated template: ${data.name}`);
+                                fetchAndRenderTemplateList();
+                            })
+                            .catch(error => {
+                                console.error('Error updating template:', error);
+                                showModal(`Failed to update template: ${error.message}`);
+                            });
                         }
-                    }, 
-                    function() {
-                        // No action needed on 'No'
-                    }
-                );
+                    });
+                    templateItem.querySelector('.btn-delete-template').addEventListener('click', function() {
+                        showConfirm(`Are you sure you want to delete the template: ${template.name}?`, 
+                            function() {
+                                fetchData(`/api/templates/${template._id}`, {
+                                    method: 'DELETE'
+                                })
+                                .then(response => {
+                                    if (!response.ok) {
+                                        throw new Error(`HTTP error! Status: ${response.status}`);
+                                    }
+                                    return response.json();
+                                })
+                                .then(data => {
+                                    showModal(data.message || 'Template deleted successfully');
+                                    fetchAndRenderTemplateList();
+                                })
+                                .catch(error => {
+                                    console.error('Error deleting template:', error);
+                                    showModal(`Failed to delete template: ${error.message}`);
+                                });
+                            }, 
+                            function() {
+                                // No action needed on 'No'
+                            }
+                        );
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching templates:', error);
+                showModal('Failed to fetch templates. Please try again.');
             });
-        });
     }
     
     // Handle template form submission
     const templateForm = document.getElementById('templateForm');
-    templateForm.addEventListener('submit', function(event) {
-        event.preventDefault();
-        
-        const newTemplate = {
-            name: document.getElementById('templateName').value,
-            content: document.getElementById('templateContent').value
-        };
-        
-        templates.push(newTemplate);
-        localStorage.setItem('templates', JSON.stringify(templates));
-        renderTemplateList();
-        templateForm.reset();
-    });
+    if (templateForm) {
+        templateForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            const newTemplate = {
+                name: document.getElementById('templateName').value,
+                content: document.getElementById('templateContent').value
+            };
+            
+            fetchData('/api/templates', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(newTemplate)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                showNotification(`Template ${data.name} added successfully!`);
+                fetchAndRenderTemplateList();
+                templateForm.reset();
+            })
+            .catch(error => {
+                console.error('Error adding template:', error);
+                showModal(`Failed to add template: ${error.message}`);
+            });
+        });
+    }
     
     // Add instruction and buttons for placeholders in template form
     const templateContentField = document.getElementById('templateContent');
@@ -1113,8 +1182,8 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
         });
     }
     
-    // Initial render of template list
-    renderTemplateList();
+    // Initial render of template list from backend
+    fetchAndRenderTemplateList();
 
     scheduleMessageBtn.addEventListener('click', function() {
         const modal = document.getElementById('scheduleMessageModal');
@@ -1136,16 +1205,20 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
             })
             .catch(error => console.error('Error fetching employees:', error));
         
-        // Populate template dropdown
+        // Populate template dropdown from backend
         const templateSelect = document.getElementById('template');
         templateSelect.innerHTML = '<option value="">Select Template</option>';
-        const templates = JSON.parse(localStorage.getItem('templates') || '[]');
-        templates.forEach(template => {
-            const option = document.createElement('option');
-            option.value = template.name;
-            option.textContent = template.name;
-            templateSelect.appendChild(option);
-        });
+        fetchData('/api/templates')
+            .then(response => response.json())
+            .then(templates => {
+                templates.forEach(template => {
+                    const option = document.createElement('option');
+                    option.value = template.name;
+                    option.textContent = template.name;
+                    templateSelect.appendChild(option);
+                });
+            })
+            .catch(error => console.error('Error fetching templates for dropdown:', error));
     });
     
     // Handle schedule message form submission
