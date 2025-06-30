@@ -1232,133 +1232,140 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
         const scheduleTime = document.getElementById('scheduleTime').value;
         const scheduledDateTime = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
         
-        const templates = JSON.parse(localStorage.getItem('templates') || '[]');
-        const selectedTemplate = templates.find(t => t.name === templateName);
-        
-        if (!selectedTemplate) {
-            showModal('Selected template not found.');
-            return;
-        }
-        
-        // Fetch employee details to replace placeholders
-        fetchData(`/api/employees`)
+        fetchData('/api/templates')
             .then(response => response.json())
-            .then(employees => {
-                if (recipientId === 'all') {
-                    // Schedule message for all employees
-                    let successCount = 0;
-                    let errorCount = 0;
-                    employees.forEach(employee => {
-                        let messageContent = selectedTemplate.content;
-                        messageContent = messageContent.replace(/{{employeeName}}/g, employee.name);
-                        messageContent = messageContent.replace(/{{employeeId}}/g, employee.id);
-                        messageContent = messageContent.replace(/{{employeeEmail}}/g, employee.email || 'Not provided');
-                        messageContent = messageContent.replace(/{{employeePosition}}/g, employee.position);
-                        
-                        const scheduledMessage = {
-                            recipientId: employee.id,
-                            recipientEmail: employee.email,
-                            subject: templateName,
-                            content: messageContent,
-                            scheduledTime: scheduledDateTime
-                        };
-                        
-                        fetchData('/api/schedule-message', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(scheduledMessage)
-                        })
-                        .then(response => {
-                            const contentType = response.headers.get('content-type');
-                            if (contentType && contentType.includes('application/json')) {
-                                return response.json();
-                            } else {
-                                throw new Error('Response is not in JSON format');
-                            }
-                        })
-                        .then(data => {
-                            if (data.error) {
-                                errorCount++;
-                                console.error(`Failed to schedule for ${employee.name}: ${data.details}`);
-                            } else {
-                                successCount++;
-                            }
-                            if (successCount + errorCount === employees.length) {
-                                showModal(`Messages scheduled: ${successCount} successful, ${errorCount} failed.`);
-                                document.getElementById('scheduleMessageModal').style.display = 'none';
-                                scheduleMessageForm.reset();
-                            }
-                        })
-                        .catch(error => {
-                            errorCount++;
-                            console.error(`Error scheduling for ${employee.name}:`, error);
-                            if (successCount + errorCount === employees.length) {
-                                showModal(`Messages scheduled: ${successCount} successful, ${errorCount} failed.`);
-                                document.getElementById('scheduleMessageModal').style.display = 'none';
-                                scheduleMessageForm.reset();
-                            }
-                        });
-                    });
-                } else {
-                    const employee = employees.find(emp => emp.id === recipientId);
-                    if (!employee) {
-                        showModal('Recipient not found.');
-                        return;
-                    }
-                    
-                    let messageContent = selectedTemplate.content;
-                    messageContent = messageContent.replace(/{{employeeName}}/g, employee.name);
-                    messageContent = messageContent.replace(/{{employeeId}}/g, employee.id);
-                    messageContent = messageContent.replace(/{{employeeEmail}}/g, employee.email || 'Not provided');
-                    messageContent = messageContent.replace(/{{employeePosition}}/g, employee.position);
-                    
-                    const scheduledMessage = {
-                        recipientId: recipientId,
-                        recipientEmail: employee.email,
-                        subject: templateName,
-                        content: messageContent,
-                        scheduledTime: scheduledDateTime
-                    };
-                    
-                    fetchData('/api/schedule-message', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(scheduledMessage)
-                    })
-                    .then(response => {
-                        console.log('Response status:', response.status);
-                        console.log('Response headers:', [...response.headers.entries()]);
-                        const contentType = response.headers.get('content-type');
-                        if (contentType && contentType.includes('application/json')) {
-                            return response.json();
-                        } else {
-                            response.text().then(text => {
-                                console.log('Non-JSON response content:', text.substring(0, 200) + (text.length > 200 ? '...' : ''));
-                            });
-                            throw new Error('Response is not in JSON format');
-                        }
-                    })
-                    .then(data => {
-                        if (data.error) {
-                            showModal(`Failed to schedule message: ${data.details}`);
-                        } else {
-                            showModal(`Message scheduled successfully for ${employee.name} at ${new Date(scheduledDateTime).toLocaleString()}`);
-                            document.getElementById('scheduleMessageModal').style.display = 'none';
-                            scheduleMessageForm.reset();
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error scheduling message:', error);
-                        console.error('Error details:', error.name, error.message, error.stack);
-                        showModal(`Error scheduling message: ${error.message}. Please ensure the backend server is running on port 3005. Check the browser console for detailed error information. If the server is not running, start it using the appropriate script in the backend folder.`);
-                    });
+            .then(templates => {
+                const selectedTemplate = templates.find(t => t.name === templateName);
+                
+                if (!selectedTemplate) {
+                    showModal('Selected template not found.');
+                    return;
                 }
+                
+                // Fetch employee details to replace placeholders
+                fetchData(`/api/employees`)
+                    .then(response => response.json())
+                    .then(employees => {
+                        if (recipientId === 'all') {
+                            // Schedule message for all employees
+                            let successCount = 0;
+                            let errorCount = 0;
+                            employees.forEach(employee => {
+                                let messageContent = selectedTemplate.content;
+                                messageContent = messageContent.replace(/{{employeeName}}/g, employee.name);
+                                messageContent = messageContent.replace(/{{employeeId}}/g, employee.id);
+                                messageContent = messageContent.replace(/{{employeeEmail}}/g, employee.email || 'Not provided');
+                                messageContent = messageContent.replace(/{{employeePosition}}/g, employee.position);
+                                
+                                const scheduledMessage = {
+                                    recipientId: employee.id,
+                                    recipientEmail: employee.email,
+                                    subject: templateName,
+                                    content: messageContent,
+                                    scheduledTime: scheduledDateTime
+                                };
+                                
+                                fetchData('/api/schedule-message', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json'
+                                    },
+                                    body: JSON.stringify(scheduledMessage)
+                                })
+                                .then(response => {
+                                    const contentType = response.headers.get('content-type');
+                                    if (contentType && contentType.includes('application/json')) {
+                                        return response.json();
+                                    } else {
+                                        throw new Error('Response is not in JSON format');
+                                    }
+                                })
+                                .then(data => {
+                                    if (data.error) {
+                                        errorCount++;
+                                        console.error(`Failed to schedule for ${employee.name}: ${data.details}`);
+                                    } else {
+                                        successCount++;
+                                    }
+                                    if (successCount + errorCount === employees.length) {
+                                        showModal(`Messages scheduled: ${successCount} successful, ${errorCount} failed.`);
+                                        document.getElementById('scheduleMessageModal').style.display = 'none';
+                                        scheduleMessageForm.reset();
+                                    }
+                                })
+                                .catch(error => {
+                                    errorCount++;
+                                    console.error(`Error scheduling for ${employee.name}:`, error);
+                                    if (successCount + errorCount === employees.length) {
+                                        showModal(`Messages scheduled: ${successCount} successful, ${errorCount} failed.`);
+                                        document.getElementById('scheduleMessageModal').style.display = 'none';
+                                        scheduleMessageForm.reset();
+                                    }
+                                });
+                            });
+                        } else {
+                            const employee = employees.find(emp => emp.id === recipientId);
+                            if (!employee) {
+                                showModal('Recipient not found.');
+                                return;
+                            }
+                            
+                            let messageContent = selectedTemplate.content;
+                            messageContent = messageContent.replace(/{{employeeName}}/g, employee.name);
+                            messageContent = messageContent.replace(/{{employeeId}}/g, employee.id);
+                            messageContent = messageContent.replace(/{{employeeEmail}}/g, employee.email || 'Not provided');
+                            messageContent = messageContent.replace(/{{employeePosition}}/g, employee.position);
+                            
+                            const scheduledMessage = {
+                                recipientId: recipientId,
+                                recipientEmail: employee.email,
+                                subject: templateName,
+                                content: messageContent,
+                                scheduledTime: scheduledDateTime
+                            };
+                            
+                            fetchData('/api/schedule-message', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify(scheduledMessage)
+                            })
+                            .then(response => {
+                                console.log('Response status:', response.status);
+                                console.log('Response headers:', [...response.headers.entries()]);
+                                const contentType = response.headers.get('content-type');
+                                if (contentType && contentType.includes('application/json')) {
+                                    return response.json();
+                                } else {
+                                    response.text().then(text => {
+                                        console.log('Non-JSON response content:', text.substring(0, 200) + (text.length > 200 ? '...' : ''));
+                                    });
+                                    throw new Error('Response is not in JSON format');
+                                }
+                            })
+                            .then(data => {
+                                if (data.error) {
+                                    showModal(`Failed to schedule message: ${data.details}`);
+                                } else {
+                                    showModal(`Message scheduled successfully for ${employee.name} at ${new Date(scheduledDateTime).toLocaleString()}`);
+                                    document.getElementById('scheduleMessageModal').style.display = 'none';
+                                    scheduleMessageForm.reset();
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Error scheduling message:', error);
+                                console.error('Error details:', error.name, error.message, error.stack);
+                                showModal(`Error scheduling message: ${error.message}. Please ensure the backend server is running on port 3005. Check the browser console for detailed error information. If the server is not running, start it using the appropriate script in the backend folder.`);
+                            });
+                        }
+                    })
+                    .catch(error => console.error('Error fetching employee details:', error));
             })
-            .catch(error => console.error('Error fetching employee details:', error));
+            .catch(error => {
+                console.error('Error fetching templates:', error);
+                showModal('Failed to fetch templates. Please try again.');
+            });
     });
     
     // Close modal functionality for schedule message modal
