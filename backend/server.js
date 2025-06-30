@@ -5,7 +5,7 @@ const path = require('path');
 const nodemailer = require('nodemailer');
 
 const app = express();
-const port = 3008;
+const port = 3009;
 
 // Middleware
 app.use(cors({
@@ -406,7 +406,7 @@ app.delete('/api/timesheets/:id', async (req, res) => {
     }
 });
 
- // Distribute timesheet to employees
+// Distribute timesheet to employees
 app.post('/api/timesheets/distribute', async (req, res) => {
     const { timesheetId, employeeIds } = req.body;
     if (!timesheetId || !employeeIds || !Array.isArray(employeeIds)) {
@@ -430,7 +430,7 @@ app.post('/api/timesheets/distribute', async (req, res) => {
         }));
         await TimesheetSubmission.insertMany(submissions);
 
-        // Send emails with timesheet attachment
+        // Send emails without timesheet attachment
         let transporter = nodemailer.createTransport({
             host: 'smtp.gmail.com',
             port: 587,
@@ -448,28 +448,24 @@ app.post('/api/timesheets/distribute', async (req, res) => {
                 from: '"Your Company" <lsumanth08@gmail.com>',
                 to: employee.email,
                 subject: `Timesheet: ${timesheet.name} (ID: ${timesheetId})`,
-                text: `Please fill out the attached timesheet and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
-                html: `<p>Please fill out the attached timesheet and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`,
-                attachments: [{
-                    filename: timesheet.name + path.extname(timesheet.filePath),
-                    path: timesheet.filePath
-                }]
+                text: `Please fill out the timesheet named "${timesheet.name}" and reply to this email with the completed details. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
+                html: `<p>Please fill out the timesheet named "${timesheet.name}" and reply to this email with the completed details. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`
             };
 
             try {
                 let info = await transporter.sendMail(mailOptions);
-                console.log(`Timesheet sent to ${employee.email}: %s`, info.messageId);
+                console.log(`Timesheet notification sent to ${employee.email}: %s`, info.messageId);
                 successCount++;
             } catch (error) {
-                console.error(`Error sending timesheet to ${employee.email}:`, error);
+                console.error(`Error sending timesheet notification to ${employee.email}:`, error);
                 errorCount++;
             }
         }
 
-        res.json({ message: `Timesheet distributed: ${successCount} successful, ${errorCount} failed` });
+        res.json({ message: `Timesheet notification distributed: ${successCount} successful, ${errorCount} failed` });
     } catch (err) {
-        console.error('Error distributing timesheet:', err.message, err.stack);
-        res.status(500).json({ error: 'Failed to distribute timesheet', details: err.message });
+        console.error('Error distributing timesheet notification:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to distribute timesheet notification', details: err.message });
     }
 });
 
@@ -804,6 +800,63 @@ cron.schedule('*/5 * * * *', () => {
     console.log('Checking for new timesheet replies...');
     monitorGmailInbox();
 });
+
+// Function to send daily reminders for pending timesheet submissions
+async function sendTimesheetReminders() {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    try {
+        const timesheets = await Timesheet.find().sort({ uploadedAt: -1 }).limit(1);
+        if (timesheets.length === 0) return;
+
+        const latestTimesheet = timesheets[0];
+        const submissions = await TimesheetSubmission.find({
+            timesheetId: latestTimesheet._id,
+            submitted: false
+        });
+
+        if (submissions.length === 0) return;
+
+        const employeeIds = submissions.map(sub => sub.employeeId);
+        const employees = await Employee.find({ id: { $in: employeeIds } });
+        const employeeMap = employees.reduce((map, emp) => {
+            map[emp.id] = emp;
+            return map;
+        }, {});
+
+        let transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            auth: {
+                user: process.env.EMAIL_USER || 'lsumanth08@gmail.com',
+                pass: process.env.EMAIL_PASS || 'vqsz qcbs pkll rfll'
+            }
+        });
+
+        for (const submission of submissions) {
+            const employee = employeeMap[submission.employeeId];
+            if (employee && employee.email) {
+                let mailOptions = {
+                    from: '"Your Company" <lsumanth08@gmail.com>',
+                    to: employee.email,
+                    subject: `Reminder: Submit Timesheet ${latestTimesheet.name} (ID: ${latestTimesheet._id})`,
+                    text: `This is a reminder to submit your timesheet. Please fill out the timesheet named "${latestTimesheet.name}" and reply to this email with the completed details. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
+                    html: `<p>This is a reminder to submit your timesheet. Please fill out the timesheet named "${latestTimesheet.name}" and reply to this email with the completed details. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`
+                };
+
+                try {
+                    let info = await transporter.sendMail(mailOptions);
+                    console.log(`Reminder sent to ${employee.email}: %s`, info.messageId);
+                } catch (error) {
+                    console.error(`Error sending reminder to ${employee.email}:`, error);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Error sending timesheet reminders:', err.message, err.stack);
+    }
+}
 
 app.listen(process.env.PORT || port, () => {
     const runningPort = process.env.PORT || port;
