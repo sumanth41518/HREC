@@ -3,107 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Employee Response</title>
+    <title>Submit Timesheet</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             max-width: 600px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f4f4f4;
+            background-color: #f5f5f5;
         }
         h1 {
             color: #333;
         }
-        form {
-            background: white;
+        .container {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
             padding: 20px;
-            border-radius: 5px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
         }
         label {
             display: block;
-            margin-bottom: 10px;
+            margin-bottom: 5px;
             font-weight: bold;
         }
-        input, textarea {
+        input[type="text"], input[type="file"] {
             width: 100%;
             padding: 8px;
-            margin-bottom: 15px;
-            border: 1px solid #ccc;
+            border: 1px solid #ddd;
             border-radius: 4px;
+            box-sizing: border-box;
         }
         button {
-            background-color: #4CAF50;
+            background-color: #007bff;
             color: white;
             padding: 10px 15px;
             border: none;
             border-radius: 4px;
             cursor: pointer;
+            font-size: 16px;
         }
         button:hover {
-            background-color: #45a049;
+            background-color: #0056b3;
+        }
+        .message {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
         }
         .success {
-            color: green;
-            margin-top: 10px;
-            display: none;
+            background-color: #d4edda;
+            color: #155724;
         }
         .error {
-            color: red;
-            margin-top: 10px;
-            display: none;
+            background-color: #f8d7da;
+            color: #721c24;
         }
     </style>
 </head>
 <body>
-    <h1>Employee Response</h1>
-    <form id="responseForm">
-        <div>
-            <label for="employeeId">Employee ID:</label>
-            <input type="text" id="employeeId" name="employeeId" required>
-        </div>
-        <div>
-            <label for="message">Your Response:</label>
-            <textarea id="message" name="message" rows="5" required></textarea>
-        </div>
-        <button type="submit">Submit Response</button>
-        <p id="successMessage" class="success">Response submitted successfully!</p>
-        <p id="errorMessage" class="error">There was an error submitting your response. Please try again.</p>
-    </form>
+    <div class="container">
+        <h1>Submit Your Timesheet</h1>
+        <form id="timesheetForm">
+            <div class="form-group">
+                <label for="employeeId">Employee ID:</label>
+                <input type="text" id="employeeId" name="employeeId" required>
+            </div>
+            <div class="form-group">
+                <label for="timesheetId">Timesheet ID:</label>
+                <input type="text" id="timesheetId" name="timesheetId" required>
+            </div>
+            <div class="form-group">
+                <label for="file">Upload Filled Timesheet:</label>
+                <input type="file" id="file" name="file" accept=".xlsx, .xls" required>
+            </div>
+            <button type="submit">Submit Timesheet</button>
+        </form>
+        <div id="message" class="message"></div>
+    </div>
 
     <script>
-        document.getElementById('responseForm').addEventListener('submit', function(event) {
+        document.getElementById('timesheetForm').addEventListener('submit', async function(event) {
             event.preventDefault();
-            
             const employeeId = document.getElementById('employeeId').value;
-            const message = document.getElementById('message').value;
-            const successMessage = document.getElementById('successMessage');
-            const errorMessage = document.getElementById('errorMessage');
-            
-            fetch('http://localhost:3003/api/responses', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ employeeId, message })
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
+            const timesheetId = document.getElementById('timesheetId').value;
+            const fileInput = document.getElementById('file');
+            const file = fileInput.files[0];
+            const messageDiv = document.getElementById('message');
+
+            if (!employeeId || !timesheetId || !file) {
+                messageDiv.textContent = 'Please fill out all fields and select a file.';
+                messageDiv.className = 'message error';
+                messageDiv.style.display = 'block';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('employeeId', employeeId);
+            formData.append('timesheetId', timesheetId);
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('http://localhost:3006/api/timesheets/submit', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    messageDiv.textContent = 'Timesheet submitted successfully!';
+                    messageDiv.className = 'message success';
+                } else {
+                    messageDiv.textContent = `Error: ${result.error}`;
+                    messageDiv.className = 'message error';
                 }
-                return response.json();
-            })
-            .then(data => {
-                errorMessage.style.display = 'none';
-                successMessage.style.display = 'block';
-                this.reset();
-            })
-            .catch(error => {
-                console.error('Error submitting response:', error);
-                successMessage.style.display = 'none';
-                errorMessage.style.display = 'block';
-            });
+                messageDiv.style.display = 'block';
+            } catch (error) {
+                messageDiv.textContent = `Error submitting timesheet: ${error.message}`;
+                messageDiv.className = 'message error';
+                messageDiv.style.display = 'block';
+            }
         });
     </script>
 </body>

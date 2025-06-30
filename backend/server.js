@@ -5,7 +5,7 @@ const path = require('path');
 const nodemailer = require('nodemailer');
 
 const app = express();
-const port = 3006;
+const port = 3008;
 
 // Middleware
 app.use(cors({
@@ -68,8 +68,26 @@ const templateSchema = new mongoose.Schema({
 });
 const Template = mongoose.model('Template', templateSchema);
 
- // API Endpoints
+const timesheetSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    filePath: { type: String, required: true },
+    uploadedAt: { type: Date, default: Date.now }
+});
+const Timesheet = mongoose.model('Timesheet', timesheetSchema);
 
+const timesheetSubmissionSchema = new mongoose.Schema({
+    timesheetId: { type: mongoose.Schema.Types.ObjectId, ref: 'Timesheet', required: true },
+    employeeId: { type: String, ref: 'Employee', required: true },
+    submitted: { type: Boolean, default: false },
+    submissionDate: { type: Date },
+    filePath: { type: String }
+});
+const TimesheetSubmission = mongoose.model('TimesheetSubmission', timesheetSubmissionSchema);
+
+  // API Endpoints
+
+ // No file upload logic needed as per user request
+const upload = { single: () => (req, res, next) => next() }; // Dummy middleware to bypass file upload
 
 // Get all employees
 app.get('/api/employees', async (req, res) => {
@@ -151,16 +169,32 @@ app.post('/api/responses', async (req, res) => {
     }
 });
 
-// Placeholder for handling email replies via Gmail API
-// This endpoint would be called by a service monitoring Gmail for replies
-app.post('/api/email-replies', async (req, res) => {
-    const { employeeId, message, replyToEmail } = req.body;
-    console.log(`Received email reply from ${replyToEmail} for employee ID: ${employeeId}`);
+// Handling email replies via Gmail API or manual input
+// This endpoint processes email replies with timesheet attachments
+app.post('/api/email-replies', upload.single('attachment'), async (req, res) => {
+    const { employeeId, message, replyToEmail, timesheetId } = req.body;
+    console.log(`Received email reply from ${replyToEmail} for employee ID: ${employeeId}, Timesheet ID: ${timesheetId || 'Not provided'}`);
     try {
         const newMessage = new Message({ employeeId, message });
         await newMessage.save();
+
+        if (timesheetId && req.file) {
+            // Update timesheet submission status
+            const submission = await TimesheetSubmission.findOneAndUpdate(
+                { timesheetId, employeeId },
+                { submitted: true, submissionDate: new Date(), filePath: req.file.path },
+                { new: true }
+            );
+            if (!submission) {
+                console.log(`No submission record found for Timesheet ID: ${timesheetId}, Employee ID: ${employeeId}`);
+            } else {
+                console.log(`Updated submission status for Timesheet ID: ${timesheetId}, Employee ID: ${employeeId}`);
+            }
+        }
+
         res.json({ id: newMessage._id, employeeId, message, timestamp: newMessage.timestamp });
     } catch (err) {
+        console.error('Error processing email reply:', err.message, err.stack);
         res.status(500).json({ error: err.message });
     }
 });
@@ -322,6 +356,169 @@ app.delete('/api/templates/:id', async (req, res) => {
     }
 });
 
+
+app.post('/api/timesheets', upload.single('file'), async (req, res) => {
+    const { name } = req.body;
+    if (!name) {
+        return res.status(400).json({ error: 'Missing required field: name is required' });
+    }
+    try {
+        console.log('Attempting to upload timesheet:', name);
+        const newTimesheet = new Timesheet({
+            name,
+            filePath: 'Not stored' // Indicating file is not saved to filesystem
+        });
+        await newTimesheet.save();
+        console.log('Successfully saved timesheet to MongoDB with ID:', newTimesheet._id);
+        res.status(201).json({ id: newTimesheet._id, name, uploadedAt: newTimesheet.uploadedAt });
+    } catch (err) {
+        console.error('Error uploading timesheet:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to upload timesheet', details: err.message });
+    }
+});
+
+// Get all timesheets
+app.get('/api/timesheets', async (req, res) => {
+    try {
+        const timesheets = await Timesheet.find().sort({ uploadedAt: -1 });
+        res.json(timesheets);
+    } catch (err) {
+        console.error('Error fetching timesheets:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to fetch timesheets', details: err.message });
+    }
+});
+
+// Delete a timesheet
+app.delete('/api/timesheets/:id', async (req, res) => {
+    const id = req.params.id;
+    console.log('Deleting timesheet ID:', id);
+    try {
+        const deletedTimesheet = await Timesheet.findByIdAndDelete(id);
+        if (!deletedTimesheet) {
+            return res.status(404).json({ error: 'Timesheet not found' });
+        }
+        // Optionally, delete associated submission records
+        await TimesheetSubmission.deleteMany({ timesheetId: id });
+        res.json({ message: 'Timesheet deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting timesheet:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to delete timesheet', details: err.message });
+    }
+});
+
+ // Distribute timesheet to employees
+app.post('/api/timesheets/distribute', async (req, res) => {
+    const { timesheetId, employeeIds } = req.body;
+    if (!timesheetId || !employeeIds || !Array.isArray(employeeIds)) {
+        return res.status(400).json({ error: 'Missing required fields: timesheetId and employeeIds array are required' });
+    }
+    try {
+        const timesheet = await Timesheet.findById(timesheetId);
+        if (!timesheet) {
+            return res.status(404).json({ error: 'Timesheet not found' });
+        }
+        const employees = await Employee.find({ id: { $in: employeeIds } });
+        if (employees.length === 0) {
+            return res.status(404).json({ error: 'No employees found with provided IDs' });
+        }
+
+        // Create submission records for tracking
+        const submissions = employees.map(employee => ({
+            timesheetId: timesheetId,
+            employeeId: employee.id,
+            submitted: false
+        }));
+        await TimesheetSubmission.insertMany(submissions);
+
+        // Send emails with timesheet attachment
+        let transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            auth: {
+                user: process.env.EMAIL_USER || 'lsumanth08@gmail.com',
+                pass: process.env.EMAIL_PASS || 'vqsz qcbs pkll rfll'
+            }
+        });
+
+        let successCount = 0;
+        let errorCount = 0;
+        for (const employee of employees) {
+            let mailOptions = {
+                from: '"Your Company" <lsumanth08@gmail.com>',
+                to: employee.email,
+                subject: `Timesheet: ${timesheet.name} (ID: ${timesheetId})`,
+                text: `Please fill out the attached timesheet and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
+                html: `<p>Please fill out the attached timesheet and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`,
+                attachments: [{
+                    filename: timesheet.name + path.extname(timesheet.filePath),
+                    path: timesheet.filePath
+                }]
+            };
+
+            try {
+                let info = await transporter.sendMail(mailOptions);
+                console.log(`Timesheet sent to ${employee.email}: %s`, info.messageId);
+                successCount++;
+            } catch (error) {
+                console.error(`Error sending timesheet to ${employee.email}:`, error);
+                errorCount++;
+            }
+        }
+
+        res.json({ message: `Timesheet distributed: ${successCount} successful, ${errorCount} failed` });
+    } catch (err) {
+        console.error('Error distributing timesheet:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to distribute timesheet', details: err.message });
+    }
+});
+
+// Submit timesheet response
+app.post('/api/timesheets/submit', upload.single('file'), async (req, res) => {
+    const { timesheetId, employeeId } = req.body;
+    if (!timesheetId || !employeeId || !req.file) {
+        return res.status(400).json({ error: 'Missing required fields: timesheetId, employeeId, and file are required' });
+    }
+    try {
+        const submission = await TimesheetSubmission.findOneAndUpdate(
+            { timesheetId, employeeId },
+            { submitted: true, submissionDate: new Date(), filePath: req.file.path },
+            { new: true }
+        );
+        if (!submission) {
+            return res.status(404).json({ error: 'Submission record not found' });
+        }
+        res.json({ message: 'Timesheet submitted successfully', submission });
+    } catch (err) {
+        console.error('Error submitting timesheet:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to submit timesheet', details: err.message });
+    }
+});
+
+ // Get timesheet submission status
+app.get('/api/timesheets/status/:timesheetId', async (req, res) => {
+    const timesheetId = req.params.timesheetId;
+    try {
+        const submissions = await TimesheetSubmission.find({ timesheetId });
+        const employeeIds = submissions.map(sub => sub.employeeId);
+        const employees = await Employee.find({ id: { $in: employeeIds } });
+        const employeeMap = employees.reduce((map, emp) => {
+            map[emp.id] = emp;
+            return map;
+        }, {});
+        res.json(submissions.map(sub => ({
+            employeeId: sub.employeeId || null,
+            employeeName: employeeMap[sub.employeeId] ? employeeMap[sub.employeeId].name : 'Unknown',
+            email: employeeMap[sub.employeeId] ? employeeMap[sub.employeeId].email : 'Unknown',
+            submitted: sub.submitted,
+            submissionDate: sub.submissionDate
+        })));
+    } catch (err) {
+        console.error('Error fetching timesheet status:', err.message, err.stack);
+        res.status(500).json({ error: 'Failed to fetch timesheet status', details: err.message });
+    }
+});
+
 // Get sent messages (recent messages sent to employees)
 app.get('/api/sent-messages', async (req, res) => {
     try {
@@ -476,6 +673,137 @@ async function checkAndSendScheduledMessages() {
 
 // Check for scheduled messages every minute
 setInterval(checkAndSendScheduledMessages, 60000);
+
+// Function to send daily reminders for pending timesheet submissions
+async function sendTimesheetReminders() {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    try {
+        const timesheets = await Timesheet.find().sort({ uploadedAt: -1 }).limit(1);
+        if (timesheets.length === 0) return;
+
+        const latestTimesheet = timesheets[0];
+        const submissions = await TimesheetSubmission.find({
+            timesheetId: latestTimesheet._id,
+            submitted: false
+        });
+
+        if (submissions.length === 0) return;
+
+        const employeeIds = submissions.map(sub => sub.employeeId);
+        const employees = await Employee.find({ id: { $in: employeeIds } });
+        const employeeMap = employees.reduce((map, emp) => {
+            map[emp.id] = emp;
+            return map;
+        }, {});
+
+        let transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            auth: {
+                user: process.env.EMAIL_USER || 'lsumanth08@gmail.com',
+                pass: process.env.EMAIL_PASS || 'vqsz qcbs pkll rfll'
+            }
+        });
+
+        for (const submission of submissions) {
+            const employee = employeeMap[submission.employeeId];
+            if (employee && employee.email) {
+                let mailOptions = {
+                    from: '"Your Company" <lsumanth08@gmail.com>',
+                    to: employee.email,
+                    subject: `Reminder: Submit Timesheet ${latestTimesheet.name} (ID: ${latestTimesheet._id})`,
+                    text: `This is a reminder to submit your timesheet. Please fill out the attached timesheet and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
+                    html: `<p>This is a reminder to submit your timesheet. Please fill out the attached timesheet and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`,
+                    attachments: [{
+                        filename: latestTimesheet.name + path.extname(latestTimesheet.filePath),
+                        path: latestTimesheet.filePath
+                    }]
+                };
+
+                try {
+                    let info = await transporter.sendMail(mailOptions);
+                    console.log(`Reminder sent to ${employee.email}: %s`, info.messageId);
+                } catch (error) {
+                    console.error(`Error sending reminder to ${employee.email}:`, error);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Error sending timesheet reminders:', err.message, err.stack);
+    }
+}
+
+// Schedule daily reminders at 9 AM
+const cron = require('node-cron');
+cron.schedule('0 9 * * *', () => {
+    console.log('Running daily timesheet reminders...');
+    sendTimesheetReminders();
+});
+
+// Gmail API integration for monitoring email replies
+const { google } = require('googleapis');
+
+// Function to monitor Gmail inbox for timesheet replies
+async function monitorGmailInbox() {
+    try {
+        // Note: Full implementation requires OAuth2 setup with user credentials
+        console.log('Monitoring Gmail inbox for timesheet replies...');
+        // Placeholder for Gmail API setup
+        // const oauth2Client = new google.auth.OAuth2(
+        //     process.env.GOOGLE_CLIENT_ID,
+        //     process.env.GOOGLE_CLIENT_SECRET,
+        //     process.env.GOOGLE_REDIRECT_URI
+        // );
+        // oauth2Client.setCredentials({
+        //     refresh_token: process.env.GOOGLE_REFRESH_TOKEN
+        // });
+        // const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+        // const res = await gmail.users.messages.list({ userId: 'me', q: 'subject:Timesheet has:attachment' });
+        // Process emails and attachments here
+        // Example logic to process each email:
+        // for (const message of res.data.messages) {
+        //     const msg = await gmail.users.messages.get({ userId: 'me', id: message.id });
+        //     const subject = msg.data.payload.headers.find(h => h.name === 'Subject').value;
+        //     const timesheetIdMatch = subject.match(/Timesheet: .* \(ID: (\w+)\)/);
+        //     const timesheetId = timesheetIdMatch ? timesheetIdMatch[1] : null;
+        //     const from = msg.data.payload.headers.find(h => h.name === 'From').value;
+        //     const employee = await Employee.findOne({ email: from });
+        //     const employeeId = employee ? employee.id : null;
+        //     if (timesheetId && employeeId) {
+        //         // Extract attachment
+        //         const attachment = msg.data.payload.parts.find(p => p.filename);
+        //         if (attachment) {
+        //             const attachmentData = await gmail.users.messages.attachments.get({
+        //                 userId: 'me',
+        //                 messageId: message.id,
+        //                 id: attachment.body.attachmentId
+        //             });
+        //             const fileData = Buffer.from(attachmentData.data.data, 'base64');
+        //             const filePath = path.join(uploadDir, `submitted_${Date.now()}_${attachment.filename}`);
+        //             fs.writeFileSync(filePath, fileData);
+        //             // Update submission status
+        //             const submission = await TimesheetSubmission.findOneAndUpdate(
+        //                 { timesheetId, employeeId },
+        //                 { submitted: true, submissionDate: new Date(), filePath },
+        //                 { new: true }
+        //             );
+        //             console.log(`Processed timesheet submission from ${from} for Timesheet ID: ${timesheetId}`);
+        //         }
+        //     }
+        // }
+        console.log('Gmail API integration requires OAuth2 setup with user credentials. This functionality is not fully implemented yet.');
+    } catch (err) {
+        console.error('Error monitoring Gmail inbox:', err.message, err.stack);
+    }
+}
+
+// Schedule monitoring of Gmail inbox every 5 minutes (adjust as needed)
+cron.schedule('*/5 * * * *', () => {
+    console.log('Checking for new timesheet replies...');
+    monitorGmailInbox();
+});
 
 app.listen(process.env.PORT || port, () => {
     const runningPort = process.env.PORT || port;

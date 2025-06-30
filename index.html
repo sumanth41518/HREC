@@ -82,6 +82,10 @@
                 <i class="far fa-comment"></i>
                 <span>Messages</span>
             </div>
+            <div class="nav-item" data-tab="timesheets">
+                <i class="fas fa-file-excel"></i>
+                <span>Timesheets</span>
+            </div>
             <div class="nav-item" data-tab="analytics">
                 <i class="fas fa-chart-line"></i>
                 <span>Analytics</span>
@@ -187,6 +191,47 @@
                     </div>
                     <div class="empty-content">
                         <p>Messages content will be displayed here.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Timesheets Content -->
+            <div id="timesheets" class="tab-content">
+                <div class="content-box">
+                    <div class="content-header">
+                        <div class="header-icon">
+                            <i class="fas fa-file-excel"></i>
+                        </div>
+                        <div class="header-text">
+                            <h2>Timesheets</h2>
+                            <p>Manage timesheet distribution and submissions</p>
+                        </div>
+                    </div>
+                    <div class="timesheet-section">
+                        <div class="timesheet-form">
+                            <h3>Upload New Timesheet</h3>
+                            <form id="timesheetForm">
+                                <div class="form-group">
+                                    <label for="timesheetName">Timesheet Name:</label>
+                                    <input type="text" id="timesheetName" name="timesheetName" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="timesheetFile">File:</label>
+                                    <input type="file" id="timesheetFile" name="file" accept=".xlsx,.xls" required>
+                                </div>
+                                <button type="submit" class="btn-submit">Upload Timesheet</button>
+                            </form>
+                        </div>
+                        <div class="timesheet-list">
+                            <h3>Uploaded Timesheets</h3>
+                            <div id="timesheetListContent">
+                                <p>No timesheets uploaded yet.</p>
+                            </div>
+                        </div>
+                        <div class="timesheet-actions">
+                            <button id="distributeTimesheetBtn" class="btn-distribute">Distribute to Employees</button>
+                            <button id="viewTimesheetStatusBtn" class="btn-status">View Submission Status</button>
+                        </div>
                     </div>
                 </div>
             </div>

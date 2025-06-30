@@ -75,6 +75,11 @@ document.addEventListener('DOMContentLoaded', function() {
             tabContents.forEach(content => content.classList.remove('active'));
             // Show the selected tab content
             document.getElementById(tabId).classList.add('active');
+            
+            // Refresh timesheet list if navigating to timesheet tab
+            if (tabId === 'timesheetsContent') {
+                fetchAndRenderTimesheetList();
+            }
         });
     });
 
@@ -1024,6 +1029,281 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
         });
     }
 
+    // Function to fetch and render timesheet list from backend
+    function fetchAndRenderTimesheetList() {
+        fetchData('/api/timesheets')
+            .then(response => response.json())
+            .then(timesheets => {
+                const timesheetListContent = document.getElementById('timesheetListContent');
+                timesheetListContent.innerHTML = '';
+                
+                if (timesheets.length === 0) {
+                    timesheetListContent.innerHTML = '<p>No timesheets uploaded yet.</p>';
+                    return;
+                }
+                
+                // Filter out timesheets that failed deletion to avoid repeated issues
+                let failedDeletions = JSON.parse(localStorage.getItem('failedDeletions') || '[]');
+                timesheets = timesheets.filter(ts => !failedDeletions.includes(ts._id));
+                
+                if (timesheets.length === 0 && failedDeletions.length > 0) {
+                    timesheetListContent.innerHTML = '<p>No timesheets available. Some were hidden due to deletion issues. Clear hidden items in local storage if needed.</p>';
+                    return;
+                }
+                
+                // Create a table for displaying timesheets
+                const table = document.createElement('table');
+                table.style.width = '100%';
+                table.style.borderCollapse = 'collapse';
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Name</th>
+                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Uploaded On</th>
+                            <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="timesheetTableBody">
+                    </tbody>
+                `;
+                timesheetListContent.appendChild(table);
+                
+                const tbody = document.getElementById('timesheetTableBody');
+                timesheets.forEach(timesheet => {
+                    const row = document.createElement('tr');
+                    row.setAttribute('data-id', timesheet._id);
+                    row.innerHTML = `
+                        <td style="border: 1px solid #ddd; padding: 8px;">${timesheet.name}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${new Date(timesheet.uploadedAt).toLocaleString()}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">
+                            <button class="btn-distribute-single" title="Distribute"><i class="fas fa-paper-plane"></i></button>
+                            <button class="btn-view-status-single" title="View Status"><i class="fas fa-eye"></i></button>
+                            <button class="btn-delete-timesheet" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                    
+                    // Add event listeners to the buttons
+                    row.querySelector('.btn-distribute-single').addEventListener('click', function() {
+                        distributeTimesheet(timesheet._id);
+                    });
+                    row.querySelector('.btn-view-status-single').addEventListener('click', function() {
+                        viewTimesheetStatus(timesheet._id);
+                    });
+                    row.querySelector('.btn-delete-timesheet').addEventListener('click', function() {
+                        console.log('Delete button clicked for timesheet ID:', timesheet._id);
+                        console.log('Timesheet details:', JSON.stringify(timesheet, null, 2));
+                        showConfirm(`Are you sure you want to delete the timesheet: ${timesheet.name}?`, 
+                            function() {
+                                // First, re-fetch the current list of timesheets to verify the ID exists
+                                fetchData('/api/timesheets')
+                                    .then(response => response.json())
+                                    .then(currentTimesheets => {
+                                        console.log('Current timesheet IDs in database:', currentTimesheets.map(ts => ts._id));
+                                        console.log('Full timesheet list from server:', JSON.stringify(currentTimesheets, null, 2));
+                                        const timesheetExists = currentTimesheets.some(ts => ts._id === timesheet._id);
+                                        if (!timesheetExists) {
+                                            console.log('Timesheet ID ' + timesheet._id + ' not found in current list. Aborting deletion.');
+                                            showModal('This timesheet (ID: ' + timesheet._id + ') no longer exists in the database. The list will be refreshed to show the current data.');
+                                            fetchAndRenderTimesheetList();
+                                            return;
+                                        }
+                                        console.log('Timesheet ID ' + timesheet._id + ' found in database. Proceeding with deletion.');
+                                        // Proceed with deletion if the timesheet exists
+                                        fetchData(`/api/timesheets/${timesheet._id}`, {
+                                            method: 'DELETE'
+                                        })
+                                        .then(deleteResponse => {
+                                            if (!deleteResponse.ok) {
+                                                throw new Error(`HTTP error! Status: ${deleteResponse.status}`);
+                                            }
+                                            return deleteResponse.json();
+                                        })
+                                        .then(data => {
+                                            showModal(data.message || 'Timesheet deleted successfully');
+                                            fetchAndRenderTimesheetList();
+                                        })
+                                        .catch(error => {
+                                            console.error('Error deleting timesheet:', error);
+                                            console.log('Attempted to delete timesheet with ID:', timesheet._id);
+                                            console.log('Full error details:', error.message);
+                                            // Store the ID in localStorage to hide it from the list if deletion fails repeatedly
+                                            let failedDeletions = JSON.parse(localStorage.getItem('failedDeletions') || '[]');
+                                            if (!failedDeletions.includes(timesheet._id)) {
+                                                failedDeletions.push(timesheet._id);
+                                                localStorage.setItem('failedDeletions', JSON.stringify(failedDeletions));
+                                            }
+                                            showModal(`Failed to delete timesheet: ${error.message}. There might be a data inconsistency or the server could not find the timesheet. This timesheet will be hidden from the list to prevent further issues. Refresh the page to update the view.`);
+                                            fetchAndRenderTimesheetList();
+                                        });
+                                    })
+                                    .catch(error => {
+                                        console.error('Error verifying timesheet existence:', error);
+                                        showModal('Failed to verify timesheet existence. Please try again.');
+                                    });
+                            }, 
+                            function() {
+                                // No action needed on 'No'
+                            }
+                        );
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching timesheets:', error);
+                showModal('Failed to fetch timesheets. Please try again.');
+            });
+    }
+    
+    // Function to distribute timesheet to employees
+    function distributeTimesheet(timesheetId) {
+        fetchData('/api/employees')
+            .then(response => response.json())
+            .then(employees => {
+                const modal = document.createElement('div');
+                modal.className = 'modal';
+                modal.style.display = 'block';
+                modal.innerHTML = `
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2>Select Employees for Distribution</h2>
+                            <span class="close">&times;</span>
+                        </div>
+                        <div class="employee-selection">
+                            <button id="selectAllBtn" style="margin-bottom: 10px;">Select All</button>
+                            <div id="employeeCheckboxes" style="max-height: 300px; overflow-y: auto;">
+                                ${employees.map(emp => `
+                                    <div style="margin-bottom: 5px;">
+                                        <input type="checkbox" id="emp-${emp.id}" value="${emp.id}">
+                                        <label for="emp-${emp.id}">${emp.name} (${emp.email || 'No Email'})</label>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <button id="distributeSelectedBtn" style="margin-top: 10px;">Distribute to Selected</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+
+                const closeBtn = modal.querySelector('.close');
+                closeBtn.addEventListener('click', function() {
+                    modal.remove();
+                });
+
+                window.addEventListener('click', function(event) {
+                    if (event.target === modal) {
+                        modal.remove();
+                    }
+                });
+
+                const selectAllBtn = modal.querySelector('#selectAllBtn');
+                selectAllBtn.addEventListener('click', function() {
+                    const checkboxes = modal.querySelectorAll('#employeeCheckboxes input[type="checkbox"]');
+                    checkboxes.forEach(checkbox => checkbox.checked = true);
+                });
+
+                const distributeSelectedBtn = modal.querySelector('#distributeSelectedBtn');
+                distributeSelectedBtn.addEventListener('click', function() {
+                    const selectedEmployeeIds = Array.from(modal.querySelectorAll('#employeeCheckboxes input[type="checkbox"]:checked')).map(checkbox => checkbox.value);
+                    if (selectedEmployeeIds.length === 0) {
+                        showModal('Please select at least one employee.');
+                        return;
+                    }
+
+                    fetchData('/api/timesheets/distribute', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            timesheetId: timesheetId,
+                            employeeIds: selectedEmployeeIds
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        showModal(data.message);
+                        modal.remove();
+                    })
+                    .catch(error => {
+                        console.error('Error distributing timesheet:', error);
+                        showModal('Failed to distribute timesheet. Please try again.');
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Error fetching employees for distribution:', error);
+                showModal('Failed to fetch employees. Please try again.');
+            });
+    }
+
+// Function to view timesheet submission status with periodic refresh
+function viewTimesheetStatus(timesheetId) {
+    let refreshInterval;
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.style.display = 'block';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2>Timesheet Submission Status</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="submission-status" style="max-height: 400px; overflow-y: auto;">
+                <p>Loading status...</p>
+            </div>
+            <div class="refresh-info" style="margin-top: 10px; font-size: 0.8em; color: #666;">
+                Status updates every 30 seconds. <button class="btn-refresh-now">Refresh Now</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const closeBtn = modal.querySelector('.close');
+    closeBtn.addEventListener('click', function() {
+        clearInterval(refreshInterval);
+        modal.remove();
+    });
+
+    window.addEventListener('click', function(event) {
+        if (event.target === modal) {
+            clearInterval(refreshInterval);
+            modal.remove();
+        }
+    });
+
+    const refreshBtn = modal.querySelector('.btn-refresh-now');
+    refreshBtn.addEventListener('click', function() {
+        updateStatus(timesheetId, modal);
+    });
+
+    function updateStatus(timesheetId, modal) {
+        fetchData(`/api/timesheets/status/${timesheetId}`)
+            .then(response => response.json())
+            .then(submissions => {
+                const statusDiv = modal.querySelector('.submission-status');
+                statusDiv.innerHTML = submissions.length > 0 ? submissions.map(sub => `
+                    <div style="margin-bottom: 10px; border-bottom: 1px solid #e5e7eb; padding-bottom: 10px;">
+                        <p><strong>${sub.employeeName}</strong> (${sub.email || 'No Email'})</p>
+                        <p>Status: ${sub.submitted ? 'Submitted on ' + new Date(sub.submissionDate).toLocaleString() : 'Pending'}</p>
+                    </div>
+                `).join('') : '<p>No submissions data available.</p>';
+            })
+            .catch(error => {
+                console.error('Error fetching timesheet status:', error);
+                showModal('Failed to fetch timesheet status. Please try again.');
+            });
+    }
+
+    // Initial update
+    updateStatus(timesheetId, modal);
+
+    // Set up periodic refresh every 30 seconds
+    refreshInterval = setInterval(() => {
+        updateStatus(timesheetId, modal);
+    }, 30000);
+}
+
     // Function to fetch and render template list from backend
     function fetchAndRenderTemplateList() {
         fetchData('/api/templates')
@@ -1184,6 +1464,72 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
     
     // Initial render of template list from backend
     fetchAndRenderTemplateList();
+    
+    // Initial render of timesheet list from backend with a refresh to ensure data is current
+    fetchAndRenderTimesheetList();
+    // Add a small delay and refresh again to ensure data sync
+    setTimeout(fetchAndRenderTimesheetList, 2000);
+    
+    // Handle timesheet form submission
+    const timesheetForm = document.getElementById('timesheetForm');
+    if (timesheetForm) {
+        timesheetForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            const timesheetName = document.getElementById('timesheetName').value;
+            const newTimesheet = {
+                name: timesheetName
+            };
+            
+            fetch('/api/timesheets', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(newTimesheet)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                showNotification(`Timesheet ${data.name} uploaded successfully!`);
+                fetchAndRenderTimesheetList();
+                timesheetForm.reset();
+            })
+            .catch(error => {
+                console.error('Error uploading timesheet:', error);
+                showModal(`Failed to upload timesheet: ${error.message}`);
+            });
+        });
+    }
+    
+    // Add event listeners for timesheet action buttons
+    const distributeTimesheetBtn = document.getElementById('distributeTimesheetBtn');
+    if (distributeTimesheetBtn) {
+        distributeTimesheetBtn.addEventListener('click', function() {
+            const selectedTimesheet = document.querySelector('.timesheet-item[data-id]');
+            if (selectedTimesheet) {
+                distributeTimesheet(selectedTimesheet.getAttribute('data-id'));
+            } else {
+                showModal('Please upload a timesheet first.');
+            }
+        });
+    }
+    
+    const viewTimesheetStatusBtn = document.getElementById('viewTimesheetStatusBtn');
+    if (viewTimesheetStatusBtn) {
+        viewTimesheetStatusBtn.addEventListener('click', function() {
+            const selectedTimesheet = document.querySelector('.timesheet-item[data-id]');
+            if (selectedTimesheet) {
+                viewTimesheetStatus(selectedTimesheet.getAttribute('data-id'));
+            } else {
+                showModal('Please upload a timesheet first.');
+            }
+        });
+    }
 
     scheduleMessageBtn.addEventListener('click', function() {
         const modal = document.getElementById('scheduleMessageModal');
