@@ -2,10 +2,11 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const path = require('path');
+const fs = require('fs');
 const nodemailer = require('nodemailer');
 
 const app = express();
-const port = 3009;
+const port = 3016;
 
 // Middleware
 app.use(cors({
@@ -86,8 +87,24 @@ const TimesheetSubmission = mongoose.model('TimesheetSubmission', timesheetSubmi
 
   // API Endpoints
 
- // No file upload logic needed as per user request
-const upload = { single: () => (req, res, next) => next() }; // Dummy middleware to bypass file upload
+ // Use multer for file uploads
+const multer = require('multer');
+const uploadDir = path.join(__dirname, 'uploads');
+
+// Ensure upload directory exists
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, uploadDir);
+    },
+    filename: function (req, file, cb) {
+        cb(null, Date.now() + path.extname(file.originalname));
+    }
+});
+const upload = multer({ storage: storage });
 
 // Get all employees
 app.get('/api/employees', async (req, res) => {
@@ -359,14 +376,14 @@ app.delete('/api/templates/:id', async (req, res) => {
 
 app.post('/api/timesheets', upload.single('file'), async (req, res) => {
     const { name } = req.body;
-    if (!name) {
-        return res.status(400).json({ error: 'Missing required field: name is required' });
+    if (!name || !req.file) {
+        return res.status(400).json({ error: 'Missing required fields: name and file are required' });
     }
     try {
         console.log('Attempting to upload timesheet:', name);
         const newTimesheet = new Timesheet({
             name,
-            filePath: 'Not stored' // Indicating file is not saved to filesystem
+            filePath: req.file.path
         });
         await newTimesheet.save();
         console.log('Successfully saved timesheet to MongoDB with ID:', newTimesheet._id);
@@ -430,7 +447,7 @@ app.post('/api/timesheets/distribute', async (req, res) => {
         }));
         await TimesheetSubmission.insertMany(submissions);
 
-        // Send emails without timesheet attachment
+        // Send emails with a placeholder timesheet attachment
         let transporter = nodemailer.createTransport({
             host: 'smtp.gmail.com',
             port: 587,
@@ -444,13 +461,24 @@ app.post('/api/timesheets/distribute', async (req, res) => {
         let successCount = 0;
         let errorCount = 0;
         for (const employee of employees) {
-            let mailOptions = {
-                from: '"Your Company" <lsumanth08@gmail.com>',
-                to: employee.email,
-                subject: `Timesheet: ${timesheet.name} (ID: ${timesheetId})`,
-                text: `Please fill out the timesheet named "${timesheet.name}" and reply to this email with the completed details. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
-                html: `<p>Please fill out the timesheet named "${timesheet.name}" and reply to this email with the completed details. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`
-            };
+                let mailOptions = {
+                    from: '"Your Company" <lsumanth08@gmail.com>',
+                    to: employee.email,
+                    subject: `Timesheet: ${timesheet.name} (ID: ${timesheetId})`,
+                    text: `Dear ${employee.name},\n\nPlease fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
+                    html: `<p>Dear ${employee.name},</p><p>Please fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`,
+                    attachments: []
+                };
+
+// Attach the actual timesheet file if it exists
+if (fs.existsSync(timesheet.filePath)) {
+    mailOptions.attachments.push({
+        filename: `${timesheet.name}${path.extname(timesheet.filePath)}`,
+        path: timesheet.filePath
+    });
+} else {
+    console.log(`Timesheet file not found at ${timesheet.filePath}`);
+}
 
             try {
                 let info = await transporter.sendMail(mailOptions);
@@ -675,18 +703,19 @@ async function sendTimesheetReminders() {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     try {
-        const timesheets = await Timesheet.find().sort({ uploadedAt: -1 }).limit(1);
-        if (timesheets.length === 0) return;
-
-        const latestTimesheet = timesheets[0];
-        const submissions = await TimesheetSubmission.find({
-            timesheetId: latestTimesheet._id,
-            submitted: false
-        });
-
+        // Get all timesheets with pending submissions
+        const submissions = await TimesheetSubmission.find({ submitted: false });
         if (submissions.length === 0) return;
 
-        const employeeIds = submissions.map(sub => sub.employeeId);
+        // Group submissions by timesheetId to avoid duplicate processing
+        const timesheetIds = [...new Set(submissions.map(sub => sub.timesheetId))];
+        const timesheets = await Timesheet.find({ _id: { $in: timesheetIds } });
+        const timesheetMap = timesheets.reduce((map, ts) => {
+            map[ts._id.toString()] = ts;
+            return map;
+        }, {});
+
+        const employeeIds = [...new Set(submissions.map(sub => sub.employeeId))];
         const employees = await Employee.find({ id: { $in: employeeIds } });
         const employeeMap = employees.reduce((map, emp) => {
             map[emp.id] = emp;
@@ -704,19 +733,27 @@ async function sendTimesheetReminders() {
         });
 
         for (const submission of submissions) {
+            const timesheet = timesheetMap[submission.timesheetId.toString()];
             const employee = employeeMap[submission.employeeId];
-            if (employee && employee.email) {
+            if (timesheet && employee && employee.email) {
                 let mailOptions = {
                     from: '"Your Company" <lsumanth08@gmail.com>',
                     to: employee.email,
-                    subject: `Reminder: Submit Timesheet ${latestTimesheet.name} (ID: ${latestTimesheet._id})`,
-                    text: `This is a reminder to submit your timesheet. Please fill out the attached timesheet and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
-                    html: `<p>This is a reminder to submit your timesheet. Please fill out the attached timesheet and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`,
-                    attachments: [{
-                        filename: latestTimesheet.name + path.extname(latestTimesheet.filePath),
-                        path: latestTimesheet.filePath
-                    }]
+                    subject: `Reminder: Submit Timesheet ${timesheet.name} (ID: ${timesheet._id})`,
+                    text: `Dear ${employee.name},\n\nThis is a reminder to submit your timesheet. Please fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
+                    html: `<p>Dear ${employee.name},</p><p>This is a reminder to submit your timesheet. Please fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`,
+                    attachments: []
                 };
+
+                // Attach the actual timesheet file if it exists
+                if (fs.existsSync(timesheet.filePath)) {
+                    mailOptions.attachments.push({
+                        filename: `${timesheet.name}${path.extname(timesheet.filePath)}`,
+                        path: timesheet.filePath
+                    });
+                } else {
+                    console.log(`Timesheet file not found at ${timesheet.filePath}`);
+                }
 
                 try {
                     let info = await transporter.sendMail(mailOptions);
@@ -806,18 +843,19 @@ async function sendTimesheetReminders() {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     try {
-        const timesheets = await Timesheet.find().sort({ uploadedAt: -1 }).limit(1);
-        if (timesheets.length === 0) return;
-
-        const latestTimesheet = timesheets[0];
-        const submissions = await TimesheetSubmission.find({
-            timesheetId: latestTimesheet._id,
-            submitted: false
-        });
-
+        // Get all timesheets with pending submissions
+        const submissions = await TimesheetSubmission.find({ submitted: false });
         if (submissions.length === 0) return;
 
-        const employeeIds = submissions.map(sub => sub.employeeId);
+        // Group submissions by timesheetId to avoid duplicate processing
+        const timesheetIds = [...new Set(submissions.map(sub => sub.timesheetId))];
+        const timesheets = await Timesheet.find({ _id: { $in: timesheetIds } });
+        const timesheetMap = timesheets.reduce((map, ts) => {
+            map[ts._id.toString()] = ts;
+            return map;
+        }, {});
+
+        const employeeIds = [...new Set(submissions.map(sub => sub.employeeId))];
         const employees = await Employee.find({ id: { $in: employeeIds } });
         const employeeMap = employees.reduce((map, emp) => {
             map[emp.id] = emp;
@@ -835,15 +873,27 @@ async function sendTimesheetReminders() {
         });
 
         for (const submission of submissions) {
+            const timesheet = timesheetMap[submission.timesheetId.toString()];
             const employee = employeeMap[submission.employeeId];
-            if (employee && employee.email) {
+            if (timesheet && employee && employee.email) {
                 let mailOptions = {
                     from: '"Your Company" <lsumanth08@gmail.com>',
                     to: employee.email,
-                    subject: `Reminder: Submit Timesheet ${latestTimesheet.name} (ID: ${latestTimesheet._id})`,
-                    text: `This is a reminder to submit your timesheet. Please fill out the timesheet named "${latestTimesheet.name}" and reply to this email with the completed details. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
-                    html: `<p>This is a reminder to submit your timesheet. Please fill out the timesheet named "${latestTimesheet.name}" and reply to this email with the completed details. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`
+                    subject: `Reminder: Submit Timesheet ${timesheet.name} (ID: ${timesheet._id})`,
+                    text: `Dear ${employee.name},\n\nThis is a reminder to submit your timesheet. Please fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
+                    html: `<p>Dear ${employee.name},</p><p>This is a reminder to submit your timesheet. Please fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`,
+                    attachments: []
                 };
+
+                // Attach the actual timesheet file if it exists
+                if (fs.existsSync(timesheet.filePath)) {
+                    mailOptions.attachments.push({
+                        filename: `${timesheet.name}${path.extname(timesheet.filePath)}`,
+                        path: timesheet.filePath
+                    });
+                } else {
+                    console.log(`Timesheet file not found at ${timesheet.filePath}`);
+                }
 
                 try {
                     let info = await transporter.sendMail(mailOptions);

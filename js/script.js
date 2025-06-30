@@ -1477,16 +1477,19 @@ function viewTimesheetStatus(timesheetId) {
             event.preventDefault();
             
             const timesheetName = document.getElementById('timesheetName').value;
-            const newTimesheet = {
-                name: timesheetName
-            };
+            const timesheetFile = document.getElementById('timesheetFile').files[0];
+            if (!timesheetName || !timesheetFile) {
+                showModal('Please provide both a name and a file for the timesheet.');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('name', timesheetName);
+            formData.append('file', timesheetFile);
             
             fetch('/api/timesheets', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(newTimesheet)
+                body: formData
             })
             .then(response => {
                 if (!response.ok) {

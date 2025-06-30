@@ -1,0 +1,1 @@
+This is a placeholder file for the timesheet template. In a real implementation, this should be replaced with an actual Excel file (.xlsx) for timesheet distribution.
