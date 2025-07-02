@@ -90,18 +90,32 @@ const TimesheetSubmission = mongoose.model('TimesheetSubmission', timesheetSubmi
  // Use multer for file uploads
 const multer = require('multer');
 const uploadDir = path.join(__dirname, 'uploads');
+const submittedDir = path.join(uploadDir, 'submitted_timesheets');
 
-// Ensure upload directory exists
+// Ensure upload directories exist
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
+}
+if (!fs.existsSync(submittedDir)) {
+    fs.mkdirSync(submittedDir, { recursive: true });
 }
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
-        cb(null, uploadDir);
+        const endpoint = req.url;
+        if (endpoint.includes('/api/email-replies') || endpoint.includes('/api/timesheets/submit')) {
+            cb(null, submittedDir);
+        } else {
+            cb(null, uploadDir);
+        }
     },
     filename: function (req, file, cb) {
-        cb(null, Date.now() + path.extname(file.originalname));
+        const endpoint = req.url;
+        if (endpoint.includes('/api/email-replies') || endpoint.includes('/api/timesheets/submit')) {
+            cb(null, file.originalname);
+        } else {
+            cb(null, Date.now() + path.extname(file.originalname));
+        }
     }
 });
 const upload = multer({ storage: storage });
@@ -196,6 +210,16 @@ app.post('/api/email-replies', upload.single('attachment'), async (req, res) => 
         await newMessage.save();
 
         if (timesheetId && req.file) {
+            // Check if filename matches employee name
+            const employee = await Employee.findOne({ id: employeeId });
+            const fileName = req.file.originalname;
+            const employeeName = employee ? employee.name : 'Unknown';
+            if (employee && !fileName.toLowerCase().includes(employeeName.toLowerCase())) {
+                console.log(`Warning: Submitted file ${fileName} does not contain employee name ${employeeName}`);
+            } else {
+                console.log(`File ${fileName} matches employee name ${employeeName}`);
+            }
+
             // Update timesheet submission status
             const submission = await TimesheetSubmission.findOneAndUpdate(
                 { timesheetId, employeeId },
@@ -462,7 +486,7 @@ app.post('/api/timesheets/distribute', async (req, res) => {
         let errorCount = 0;
         for (const employee of employees) {
                 let mailOptions = {
-                    from: '"Your Company" <lsumanth08@gmail.com>',
+                    from: '"iNetframe Technologies" <lsumanth08@gmail.com>',
                     to: employee.email,
                     subject: `Timesheet: ${timesheet.name} (ID: ${timesheetId})`,
                     text: `Dear ${employee.name},\n\nPlease fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
@@ -504,6 +528,16 @@ app.post('/api/timesheets/submit', upload.single('file'), async (req, res) => {
         return res.status(400).json({ error: 'Missing required fields: timesheetId, employeeId, and file are required' });
     }
     try {
+        // Check if filename matches employee name
+        const employee = await Employee.findOne({ id: employeeId });
+        const fileName = req.file.originalname;
+        const employeeName = employee ? employee.name : 'Unknown';
+        if (employee && !fileName.toLowerCase().includes(employeeName.toLowerCase())) {
+            console.log(`Warning: Submitted file ${fileName} does not contain employee name ${employeeName}`);
+        } else {
+            console.log(`File ${fileName} matches employee name ${employeeName}`);
+        }
+
         const submission = await TimesheetSubmission.findOneAndUpdate(
             { timesheetId, employeeId },
             { submitted: true, submissionDate: new Date(), filePath: req.file.path },
@@ -596,7 +630,7 @@ app.post('/api/send-email', (req, res) => {
 
     // Setup email data
     let mailOptions = {
-        from: '"Your Company" <lsumanth08@gmail.com>', // sender address
+        from: '"iNetframe Technologies" <lsumanth08@gmail.com>', // sender address
         to: to, // list of receivers
         subject: subject || 'Message from Dashboard', // Subject line
         text: processedText, // plain text body
@@ -675,7 +709,7 @@ async function checkAndSendScheduledMessages() {
                 }
             });
             let mailOptions = {
-                from: '"Your Company" <lsumanth08@gmail.com>',
+                from: '"iNetframe Technologies" <lsumanth08@gmail.com>',
                 to: message.recipient_email,
                 subject: message.subject || 'Scheduled Message',
                 text: message.content,
@@ -737,7 +771,7 @@ async function sendTimesheetReminders() {
             const employee = employeeMap[submission.employeeId];
             if (timesheet && employee && employee.email) {
                 let mailOptions = {
-                    from: '"Your Company" <lsumanth08@gmail.com>',
+                    from: '"iNetframe Technologies" <lsumanth08@gmail.com>',
                     to: employee.email,
                     subject: `Reminder: Submit Timesheet ${timesheet.name} (ID: ${timesheet._id})`,
                     text: `Dear ${employee.name},\n\nThis is a reminder to submit your timesheet. Please fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
@@ -775,68 +809,47 @@ cron.schedule('0 9 * * *', () => {
     sendTimesheetReminders();
 });
 
-// Gmail API integration for monitoring email replies
-const { google } = require('googleapis');
+// Alternative to Gmail API: Manual submission or IMAP setup
+// Function to monitor email inbox for timesheet replies is not implemented with Gmail API due to OAuth2 setup complexity.
+// Instead, consider the following alternatives:
+// 1. Manual Submission: Employees can submit timesheets directly through the web interface or API endpoint.
+// 2. IMAP Setup: Use a dedicated email account and IMAP protocol to fetch emails. This requires installing an IMAP library.
 
-// Function to monitor Gmail inbox for timesheet replies
-async function monitorGmailInbox() {
-    try {
-        // Note: Full implementation requires OAuth2 setup with user credentials
-        console.log('Monitoring Gmail inbox for timesheet replies...');
-        // Placeholder for Gmail API setup
-        // const oauth2Client = new google.auth.OAuth2(
-        //     process.env.GOOGLE_CLIENT_ID,
-        //     process.env.GOOGLE_CLIENT_SECRET,
-        //     process.env.GOOGLE_REDIRECT_URI
-        // );
-        // oauth2Client.setCredentials({
-        //     refresh_token: process.env.GOOGLE_REFRESH_TOKEN
-        // });
-        // const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-        // const res = await gmail.users.messages.list({ userId: 'me', q: 'subject:Timesheet has:attachment' });
-        // Process emails and attachments here
-        // Example logic to process each email:
-        // for (const message of res.data.messages) {
-        //     const msg = await gmail.users.messages.get({ userId: 'me', id: message.id });
-        //     const subject = msg.data.payload.headers.find(h => h.name === 'Subject').value;
-        //     const timesheetIdMatch = subject.match(/Timesheet: .* \(ID: (\w+)\)/);
-        //     const timesheetId = timesheetIdMatch ? timesheetIdMatch[1] : null;
-        //     const from = msg.data.payload.headers.find(h => h.name === 'From').value;
-        //     const employee = await Employee.findOne({ email: from });
-        //     const employeeId = employee ? employee.id : null;
-        //     if (timesheetId && employeeId) {
-        //         // Extract attachment
-        //         const attachment = msg.data.payload.parts.find(p => p.filename);
-        //         if (attachment) {
-        //             const attachmentData = await gmail.users.messages.attachments.get({
-        //                 userId: 'me',
-        //                 messageId: message.id,
-        //                 id: attachment.body.attachmentId
-        //             });
-        //             const fileData = Buffer.from(attachmentData.data.data, 'base64');
-        //             const filePath = path.join(uploadDir, `submitted_${Date.now()}_${attachment.filename}`);
-        //             fs.writeFileSync(filePath, fileData);
-        //             // Update submission status
-        //             const submission = await TimesheetSubmission.findOneAndUpdate(
-        //                 { timesheetId, employeeId },
-        //                 { submitted: true, submissionDate: new Date(), filePath },
-        //                 { new: true }
-        //             );
-        //             console.log(`Processed timesheet submission from ${from} for Timesheet ID: ${timesheetId}`);
-        //         }
-        //     }
-        // }
-        console.log('Gmail API integration requires OAuth2 setup with user credentials. This functionality is not fully implemented yet.');
-    } catch (err) {
-        console.error('Error monitoring Gmail inbox:', err.message, err.stack);
-    }
-}
+// Placeholder for potential IMAP implementation (requires 'imap' or 'mailjs' library installation)
+// Uncomment and configure if you choose to use IMAP as an alternative to Gmail API.
+// const Imap = require('imap');
+// const inspect = require('util').inspect;
+// function monitorEmailInbox() {
+//     console.log('Monitoring email inbox for timesheet replies using IMAP...');
+//     const imap = new Imap({
+//         user: process.env.EMAIL_USER || 'your_email@gmail.com',
+//         password: process.env.EMAIL_PASS || 'your_password',
+//         host: 'imap.gmail.com',
+//         port: 993,
+//         tls: true
+//     });
+//     imap.once('ready', function() {
+//         imap.openBox('INBOX', true, function(err, box) {
+//             if (err) throw err;
+//             const f = imap.seq.fetch(box.messages.total + ':*', { bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE)', 'TEXT'] });
+//             f.on('message', function(msg, seqno) {
+//                 console.log('Message #%d', seqno);
+//                 const prefix = '(#' + seqno + ') ';
+//                 msg.on('body', function(stream, info) {
+//                     if (info.which === 'TEXT')
+//                         console.log(prefix + 'Body [%s]', inspect(info));
+//                     stream.on('data', function(chunk) {
+//                         console.log(prefix + 'Body chunk: ' + chunk.toString());
+//                     });
+//                 });
+//             });
+//         });
+//     });
+//     imap.connect();
+// }
 
-// Schedule monitoring of Gmail inbox every 5 minutes (adjust as needed)
-cron.schedule('*/5 * * * *', () => {
-    console.log('Checking for new timesheet replies...');
-    monitorGmailInbox();
-});
+// For now, rely on manual submission through the API endpoint /api/timesheets/submit
+console.log('Automatic email monitoring is disabled. Employees should submit timesheets manually through the web interface.');
 
 // Function to send daily reminders for pending timesheet submissions
 async function sendTimesheetReminders() {
@@ -877,11 +890,11 @@ async function sendTimesheetReminders() {
             const employee = employeeMap[submission.employeeId];
             if (timesheet && employee && employee.email) {
                 let mailOptions = {
-                    from: '"Your Company" <lsumanth08@gmail.com>',
+                    from: '"iNetframe Technologies" <lsumanth08@gmail.com>',
                     to: employee.email,
-                    subject: `Reminder: Submit Timesheet ${timesheet.name} (ID: ${timesheet._id})`,
-                    text: `Dear ${employee.name},\n\nThis is a reminder to submit your timesheet. Please fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
-                    html: `<p>Dear ${employee.name},</p><p>This is a reminder to submit your timesheet. Please fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`,
+                    subject: `Timesheet: ${timesheet.name} (ID: ${timesheetId})`,
+                    text: `Dear ${employee.name},\n\nPlease fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.`,
+                    html: `<p>Dear ${employee.name},</p><p>Please fill out the attached timesheet named "${timesheet.name}" and reply to this email with the completed file attached. Ensure to include your Employee ID (${employee.id}) in the reply for tracking purposes.</p>`,
                     attachments: []
                 };
 
