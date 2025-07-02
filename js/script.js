@@ -410,7 +410,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     // Function to fetch and render employee list from backend
-    function fetchAndRenderEmployeeList() {
+    function fetchAndRenderEmployeeList(filter = '') {
         fetchData('/api/employees')
             .then(response => response.json())
             .then(employees => {
@@ -426,14 +426,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 employeeList.innerHTML = '';
                 
+                // Filter employees based on search input
+                const filteredEmployees = filter 
+                    ? employees.filter(emp => 
+                        emp.name.toLowerCase().includes(filter.toLowerCase()) || 
+                        emp.id.toLowerCase().includes(filter.toLowerCase()))
+                    : employees;
+                
                 // Enable scrollbar if employee count exceeds 4
-                if (employees.length > 4) {
+                if (filteredEmployees.length > 4) {
                     employeeList.classList.add('scrollable');
                 } else {
                     employeeList.classList.remove('scrollable');
                 }
                 
-                employees.forEach(employee => {
+                if (filteredEmployees.length === 0) {
+                    employeeList.innerHTML = '<p>No employees match your search criteria.</p>';
+                    return;
+                }
+                
+                filteredEmployees.forEach(employee => {
                     const employeeItem = document.createElement('div');
                     employeeItem.className = 'employee-item';
                     employeeItem.setAttribute('data-id', employee.id);
@@ -484,7 +496,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             })
                             .then(data => {
                                 showModal(`Updated profile for ${data.name}`);
-                                fetchAndRenderEmployeeList();
+                                fetchAndRenderEmployeeList(filter);
                             })
                             .catch(error => {
                                 console.error('Error updating employee:', error);
@@ -506,7 +518,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 })
                                 .then(data => {
                                     showModal(data.message || 'Employee deleted successfully');
-                                    fetchAndRenderEmployeeList();
+                                    fetchAndRenderEmployeeList(filter);
                                 })
                                 .catch(error => {
                                     console.error('Error deleting employee:', error);
@@ -992,6 +1004,14 @@ function showPreviewForMultipleEmployees(employees, selectedTemplate) {
     
     // Initial render of employee list
     fetchAndRenderEmployeeList();
+    
+    // Add event listener for search functionality
+    const employeeSearch = document.getElementById('employeeSearch');
+    if (employeeSearch) {
+        employeeSearch.addEventListener('input', function() {
+            fetchAndRenderEmployeeList(this.value);
+        });
+    }
 
     // Export to Excel functionality
     const exportButton = document.getElementById('exportToExcel');
