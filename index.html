@@ -16,13 +16,13 @@
                 </div>
             </div>
             <!-- Stats Cards -->
-        <div class="stats-container">
+        <div class="stats-container" id="dashboardStats">
             <div class="stat-card">
                 <div class="stat-icon blue">
                     <i class="far fa-comment"></i>
                 </div>
-                <div class="stat-content">
-                    <h2>1247</h2>
+                <div class="stat-content" id="totalMessages">
+                    <h2>0</h2>
                     <p>Total Messages</p>
                 </div>
             </div>
@@ -30,8 +30,8 @@
                 <div class="stat-icon green">
                     <i class="fas fa-check-circle"></i>
                 </div>
-                <div class="stat-content">
-                    <h2>1180</h2>
+                <div class="stat-content" id="deliveredMessages">
+                    <h2>0</h2>
                     <p>Delivered</p>
                 </div>
             </div>
@@ -39,8 +39,8 @@
                 <div class="stat-icon orange">
                     <i class="far fa-clock"></i>
                 </div>
-                <div class="stat-content">
-                    <h2>45</h2>
+                <div class="stat-content" id="pendingMessages">
+                    <h2>0</h2>
                     <p>Pending</p>
                 </div>
             </div>
@@ -48,8 +48,8 @@
                 <div class="stat-icon purple">
                     <i class="far fa-comment-dots"></i>
                 </div>
-                <div class="stat-content">
-                    <h2>892</h2>
+                <div class="stat-content" id="respondedMessages">
+                    <h2>0</h2>
                     <p>Responded</p>
                 </div>
             </div>
@@ -57,8 +57,8 @@
                 <div class="stat-icon blue-light">
                     <i class="fas fa-chart-line"></i>
                 </div>
-                <div class="stat-content">
-                    <h2>71.4%</h2>
+                <div class="stat-content" id="responseRate">
+                    <h2>0%</h2>
                     <p>Response Rate</p>
                 </div>
             </div>
@@ -80,7 +80,7 @@
             </div>
             <div class="nav-item" data-tab="messages">
                 <i class="far fa-comment"></i>
-                <span>Messages</span>
+                <span>Responses</span>
             </div>
             <div class="nav-item" data-tab="timesheets">
                 <i class="fas fa-file-excel"></i>
@@ -186,7 +186,7 @@
                             <i class="far fa-comment"></i>
                         </div>
                         <div class="header-text">
-                            <h2>Messages</h2>
+                            <h2>Responses</h2>
                             <p>View all messages</p>
                         </div>
                     </div>
@@ -249,8 +249,21 @@
                             <p>View performance metrics</p>
                         </div>
                     </div>
-                    <div class="empty-content">
-                        <p>Analytics content will be displayed here.</p>
+                    <div class="analytics-section">
+                        <div class="report-container">
+                            <h3>Message Statistics</h3>
+                            <div id="messageStats" class="stats-grid">
+                                <!-- Message stats will be dynamically loaded here -->
+                                <p id="noMessageStats">Loading message statistics...</p>
+                            </div>
+                        </div>
+                        <div class="report-container">
+                            <h3>Timesheet Submission Status</h3>
+                            <div id="timesheetStats" class="stats-grid">
+                                <!-- Timesheet stats will be dynamically loaded here -->
+                                <p id="noTimesheetStats">Loading timesheet submission status...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
