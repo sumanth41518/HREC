@@ -350,6 +350,62 @@ document.addEventListener('DOMContentLoaded', function() {
     // Add a debug log to confirm the function is called
     console.log('Updated logic for message status display applied on: ' + new Date().toLocaleString());
 
+    // Function to update dashboard statistics
+    function updateDashboardStats() {
+        // Fetch message statistics
+        fetchData('/api/sent-messages')
+            .then(response => response.json())
+            .then(messages => {
+                const totalMessages = messages.length;
+                const deliveredMessages = messages.filter(msg => {
+                    const messageId = msg.id || `${msg.to}-${msg.timestamp}`;
+                    const deliveryStatuses = JSON.parse(localStorage.getItem('deliveryStatuses') || '{}');
+                    return deliveryStatuses[messageId] === 'delivered' || !deliveryStatuses[messageId];
+                }).length;
+                const pendingMessages = totalMessages - deliveredMessages;
+                
+                // Fetch response data for responded messages and response rate
+                fetchData('/api/messages')
+                    .then(response => response.json())
+                    .then(responses => {
+                        const respondedMessages = responses.length;
+                        const responseRate = totalMessages > 0 ? ((respondedMessages / totalMessages) * 100).toFixed(1) : 0;
+                        
+                        // Update dashboard stats
+                        document.getElementById('totalMessages').innerHTML = `
+                            <h2>${totalMessages}</h2>
+                            <p>Total Messages</p>
+                        `;
+                        document.getElementById('deliveredMessages').innerHTML = `
+                            <h2>${deliveredMessages}</h2>
+                            <p>Delivered</p>
+                        `;
+                        document.getElementById('pendingMessages').innerHTML = `
+                            <h2>${pendingMessages}</h2>
+                            <p>Pending</p>
+                        `;
+                        document.getElementById('respondedMessages').innerHTML = `
+                            <h2>${respondedMessages}</h2>
+                            <p>Responded</p>
+                        `;
+                        document.getElementById('responseRate').innerHTML = `
+                            <h2>${responseRate}%</h2>
+                            <p>Response Rate</p>
+                        `;
+                    })
+                    .catch(error => {
+                        console.error('Error fetching response data for dashboard stats:', error);
+                    });
+            })
+            .catch(error => {
+                console.error('Error fetching message data for dashboard stats:', error);
+            });
+    }
+
+    // Call updateDashboardStats on initial load and set interval for periodic updates
+    updateDashboardStats();
+    setInterval(updateDashboardStats, 30000); // Update every 30 seconds
+
     // Add a test button for simulating a new message notification
     const testNotificationBtn = document.createElement('button');
     testNotificationBtn.innerHTML = '<i class="fas fa-bell"></i>';
@@ -1751,12 +1807,219 @@ function viewTimesheetStatus(timesheetId) {
     });
 
     viewReportsBtn.addEventListener('click', function() {
-        showModal('View Reports functionality will be implemented here');
+        // Switch to Analytics tab
+        const analyticsNavItem = document.querySelector('.nav-item[data-tab="analytics"]');
+        if (analyticsNavItem) {
+            analyticsNavItem.click();
+        }
+        // Fetch and display reports
+        fetchAndDisplayReports();
     });
+
+    // Function to fetch and display reports for Analytics tab
+    function fetchAndDisplayReports() {
+        // Fetch message statistics
+        fetchData('/api/sent-messages')
+            .then(response => response.json())
+            .then(messages => {
+                const totalMessages = messages.length;
+                const deliveredMessages = messages.filter(msg => {
+                    const messageId = msg.id || `${msg.to}-${msg.timestamp}`;
+                    const deliveryStatuses = JSON.parse(localStorage.getItem('deliveryStatuses') || '{}');
+                    return deliveryStatuses[messageId] === 'delivered' || !deliveryStatuses[messageId];
+                }).length;
+                const pendingMessages = totalMessages - deliveredMessages;
+                
+                const messageStatsDiv = document.getElementById('messageStats');
+                const noMessageStats = document.getElementById('noMessageStats');
+                if (noMessageStats) {
+                    noMessageStats.style.display = 'none';
+                }
+                if (messageStatsDiv) {
+                    messageStatsDiv.innerHTML = `
+                        <div class="stat-card">
+                            <div class="stat-icon blue">
+                                <i class="far fa-comment"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h2>${totalMessages}</h2>
+                                <p>Total Messages</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon green">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h2>${deliveredMessages}</h2>
+                                <p>Delivered</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon orange">
+                                <i class="far fa-clock"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h2>${pendingMessages}</h2>
+                                <p>Pending</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching message statistics:', error);
+                const noMessageStats = document.getElementById('noMessageStats');
+                if (noMessageStats) {
+                    noMessageStats.textContent = 'Failed to load message statistics.';
+                    noMessageStats.style.display = 'block';
+                }
+            });
+
+        // Fetch timesheet submission status
+        fetchData('/api/timesheets')
+            .then(response => response.json())
+            .then(timesheets => {
+                if (timesheets.length === 0) {
+                    const timesheetStatsDiv = document.getElementById('timesheetStats');
+                    const noTimesheetStats = document.getElementById('noTimesheetStats');
+                    if (noTimesheetStats) {
+                        noTimesheetStats.style.display = 'none';
+                    }
+                    if (timesheetStatsDiv) {
+                        timesheetStatsDiv.innerHTML = '<p>No timesheets available.</p>';
+                    }
+                    return;
+                }
+
+                // For simplicity, show status of the most recent timesheet
+                const latestTimesheet = timesheets[timesheets.length - 1];
+                fetchData(`/api/timesheets/status/${latestTimesheet._id}`)
+                    .then(response => response.json())
+                    .then(submissions => {
+                        const totalEmployees = submissions.length;
+                        const submittedCount = submissions.filter(sub => sub.submitted).length;
+                        const pendingCount = totalEmployees - submittedCount;
+                        
+                        const timesheetStatsDiv = document.getElementById('timesheetStats');
+                        const noTimesheetStats = document.getElementById('noTimesheetStats');
+                        if (noTimesheetStats) {
+                            noTimesheetStats.style.display = 'none';
+                        }
+                        if (timesheetStatsDiv) {
+                            timesheetStatsDiv.innerHTML = `
+                                <div class="stat-card">
+                                    <div class="stat-icon blue">
+                                        <i class="fas fa-file-excel"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <h2>${totalEmployees}</h2>
+                                        <p>Total Employees</p>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon green">
+                                        <i class="fas fa-check-circle"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <h2>${submittedCount}</h2>
+                                        <p>Submitted</p>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon orange">
+                                        <i class="far fa-clock"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <h2>${pendingCount}</h2>
+                                        <p>Pending</p>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching timesheet submission status:', error);
+                        const noTimesheetStats = document.getElementById('noTimesheetStats');
+                        if (noTimesheetStats) {
+                            noTimesheetStats.textContent = 'Failed to load timesheet submission status.';
+                            noTimesheetStats.style.display = 'block';
+                        }
+                    });
+            })
+            .catch(error => {
+                console.error('Error fetching timesheets for reports:', error);
+                const noTimesheetStats = document.getElementById('noTimesheetStats');
+                if (noTimesheetStats) {
+                    noTimesheetStats.textContent = 'Failed to load timesheet submission status.';
+                    noTimesheetStats.style.display = 'block';
+                }
+            });
+    }
+
+    // Add event listener to refresh reports when Analytics tab is selected
+    const analyticsNavItem = document.querySelector('.nav-item[data-tab="analytics"]');
+    if (analyticsNavItem) {
+        analyticsNavItem.addEventListener('click', function() {
+            fetchAndDisplayReports();
+        });
+    }
 
     // Employee action buttons
     const viewDetailButtons = document.querySelectorAll('.btn-view');
     const messageButtons = document.querySelectorAll('.btn-message');
+    
+    // Function to show employee profile in a modal
+    function showEmployeeProfile(employee) {
+        const profileModal = document.createElement('div');
+        profileModal.className = 'modal';
+        profileModal.style.display = 'block';
+        profileModal.innerHTML = `
+            <div class="modal-content" style="max-width: 600px;">
+                <div class="modal-header">
+                    <h2>Employee Profile</h2>
+                    <span class="close-profile">&times;</span>
+                </div>
+                <div class="employee-profile" style="padding: 20px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                        <div style="width: 100px; height: 100px; background-color: #ccc; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 20px;">
+                            <i class="fas fa-user" style="font-size: 50px; color: #666;"></i>
+                        </div>
+                        <div>
+                            <h3 style="margin: 0;">${employee.name}</h3>
+                            <p style="color: #666; margin: 5px 0 0 0;">${employee.position}</p>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <h4 style="margin: 0 0 5px 0; color: #333;">Details</h4>
+                        <p><strong>ID:</strong> ${employee.id}</p>
+                        <p><strong>Email:</strong> ${employee.email || 'Not provided'}</p>
+                        <p><strong>Position:</strong> ${employee.position}</p>
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; margin-top: 20px;">
+                        <button class="btn-close-profile">Close</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(profileModal);
+
+        const closeProfileBtn = profileModal.querySelector('.close-profile');
+        closeProfileBtn.addEventListener('click', function() {
+            profileModal.remove();
+        });
+
+        const closeBtn = profileModal.querySelector('.btn-close-profile');
+        closeBtn.addEventListener('click', function() {
+            profileModal.remove();
+        });
+
+        window.addEventListener('click', function(event) {
+            if (event.target === profileModal) {
+                profileModal.remove();
+            }
+        });
+    }
     
     viewDetailButtons.forEach(button => {
         button.addEventListener('click', function() {
